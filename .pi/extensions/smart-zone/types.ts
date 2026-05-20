@@ -8,17 +8,17 @@
  *   retrieval, harmful for coding.
  *
  * Strategy:
- *   - Warn at 80K (user has time to plan a compact or break out a fresh slice)
- *   - Hard cap at 100K (auto-trigger compaction)
+ *   - Warn at 60K (user has time to plan a compact or break out a fresh slice)
+ *   - Hard cap at 80K (auto-trigger compaction)
  *   - Threshold is in ABSOLUTE TOKENS, not percent of context window.
  *     A 200K window does NOT mean we can use 160K — the smart zone is 100K
  *     regardless of the model's nominal capacity.
  */
 
 export interface SmartZoneConfig {
-  /** Token count at which to warn the user. Default 80_000. */
+  /** Token count at which to warn the user. Default 60_000. */
   warning_threshold: number;
-  /** Token count at which to auto-trigger compaction. Default 100_000. */
+  /** Token count at which to auto-trigger compaction. Default 80_000. */
   hard_cap: number;
   /**
    * Custom instructions passed to ctx.compact() when the hard cap fires.
@@ -31,15 +31,15 @@ export interface SmartZoneConfig {
   show_status_bar: boolean;
   /**
    * Increment in tokens between repeated warnings.
-   * Once warned at 80K, no new warning until tokens >= 80K + this.
+   * Once warned at 60K, no new warning until tokens >= 60K + this.
    * Default 5_000. Prevents notification spam every turn.
    */
   warning_step: number;
 }
 
 export const DEFAULT_SMART_ZONE_CONFIG: SmartZoneConfig = {
-  warning_threshold: 80_000,
-  hard_cap: 100_000,
+  warning_threshold: 60_000,
+  hard_cap: 80_000,
   compact_instructions:
     "Summarize the conversation, focusing on: " +
     "(1) decisions made and their rationale; " +

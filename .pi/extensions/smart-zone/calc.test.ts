@@ -17,36 +17,36 @@ test("decide: below warning → ok", () => {
   const d = decideAction(50_000, 0, cfg);
   assert.equal(d.action, "ok");
   assert.equal(d.tokens, 50_000);
-  assert.equal(d.percent_of_cap, 50);
+  assert.equal(d.percent_of_cap, 63); // 50K / 80K = 62.5% → 63%
 });
 
 test("decide: at warning threshold and not yet warned → warn", () => {
-  const d = decideAction(80_000, 0, cfg);
+  const d = decideAction(60_000, 0, cfg);
   assert.equal(d.action, "warn");
-  assert.equal(d.threshold_crossed, 80_000);
+  assert.equal(d.threshold_crossed, 60_000);
 });
 
 test("decide: just above warning, already warned at exactly threshold → ok (within step)", () => {
-  const d = decideAction(82_000, 80_000, cfg);
-  // last warned at 80K, next at 85K, current 82K → still ok
+  const d = decideAction(62_000, 60_000, cfg);
+  // last warned at 60K, next at 65K, current 62K → still ok
   assert.equal(d.action, "ok");
 });
 
-test("decide: crossed next step (80K + 5K) → warn again", () => {
-  const d = decideAction(85_000, 80_000, cfg);
-  // Next warn is at 80K + 5K = 85K
+test("decide: crossed next step (60K + 5K) → warn again", () => {
+  const d = decideAction(65_000, 60_000, cfg);
+  // Next warn is at 60K + 5K = 65K
   assert.equal(d.action, "warn");
-  assert.equal(d.threshold_crossed, 85_000);
+  assert.equal(d.threshold_crossed, 65_000);
 });
 
 test("decide: at hard cap → compact", () => {
-  const d = decideAction(100_000, 95_000, cfg);
+  const d = decideAction(80_000, 75_000, cfg);
   assert.equal(d.action, "compact");
-  assert.equal(d.threshold_crossed, 100_000);
+  assert.equal(d.threshold_crossed, 80_000);
 });
 
 test("decide: over hard cap → compact (still)", () => {
-  const d = decideAction(125_000, 95_000, cfg);
+  const d = decideAction(100_000, 75_000, cfg);
   assert.equal(d.action, "compact");
   assert.equal(d.percent_of_cap, 100); // clamped
 });
@@ -59,8 +59,8 @@ test("decide: custom config respected", () => {
 });
 
 test("decide: percent_of_cap is rounded", () => {
-  // 33_333 / 100_000 = 33.333% → 33
-  assert.equal(decideAction(33_333, 0, cfg).percent_of_cap, 33);
+  // 33_333 / 80_000 = 41.666% → 42
+  assert.equal(decideAction(33_333, 0, cfg).percent_of_cap, 42);
 });
 
 // ─── formatBar ───────────────────────────────────────────────────────────────
@@ -121,14 +121,14 @@ test("tokens: M range", () => {
 test("status line: contains both numbers + bar", () => {
   const line = formatStatusLine(45_000, cfg);
   assert.match(line, /45K/);
-  assert.match(line, /100K/);
-  assert.match(line, /45%/);
+  assert.match(line, /80K/);
+  assert.match(line, /56%/);
   assert.match(line, /█/);
 });
 
 test("status line: 0 tokens", () => {
   const line = formatStatusLine(0, cfg);
-  assert.match(line, /0\/100K/);
+  assert.match(line, /0\/80K/);
   assert.match(line, /0%/);
 });
 
