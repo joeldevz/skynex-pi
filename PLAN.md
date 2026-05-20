@@ -149,14 +149,34 @@ Threshold is in **absolute tokens**, not percent of context window: a 200K windo
 
 See `docs/design/request-flow.md` § principles #1.
 
-### S1-5 — `neurox-tool.ts`
+### S1-5 — `neurox-tool` ✅ DONE 2026-05-20
 
-**File**: `extensions/core/neurox-tool.ts`
-**Hook**: `pi.registerTool` x5 (recall, save, context, session_start, session_end)
-**Estimated**: 2 days
-**Depends on**: nothing
+**Files**:
+- `extensions/core/neurox-tool/types.ts` — config + 5 tool input shapes + `NeuroxCliResult`
+- `extensions/core/neurox-tool/cli.ts` — pure CLI arg builders + JSON parser
+- `extensions/core/neurox-tool/index.ts` — Pi extension: 5 tools + 1 command
+- `extensions/core/neurox-tool/cli.test.ts` — 18 pure tests
 
-Wraps the existing `neurox` binary as Pi tools that the model can invoke directly. Replaces the MCP setup from skynex (more efficient, fewer tokens for tool definitions).
+**Hook**: `pi.registerTool` × 5
+**Status**: implemented, typechecked, 18/18 cli tests + 19 smart-zone + 34 skill-registry + 28 iron-law + 25 triage = 124/124 overall
+**Lines**: ~640 (types: 90, cli: 90, index: 330, tests: 130)
+
+Tools registered:
+- `neurox_recall(query, namespace?, limit?, kind?, type?, files?, include_stale?)` — search memory
+- `neurox_save(title, content, namespace?, type?, kind?, tags?, files?, topic_key?, confidence?, retention?)` — persist
+- `neurox_context(namespace?, limit?, files?)` — load relevant context
+- `neurox_session_start(title?, directory?, branch?, namespace?)` — begin session
+- `neurox_session_end(session_id, summary)` — close session
+
+Binary auto-detection: checks `~/.local/bin/neurox`, `/usr/local/bin/neurox`, `/opt/homebrew/bin/neurox`, `/usr/bin/neurox`, then falls back to `which neurox`. Configurable via `.skynex/neurox.json`.
+
+**Decision during implementation**: if the binary is not found, tools are STILL registered but `execute()` returns `isError: true`. Rationale: registering the tools lets the model see them in its capability list (so it doesn't waste tokens trying to fall back to other methods); the error response when called tells the model the issue directly.
+
+**Why wrap the CLI instead of using MCP**: the neurox MCP server burns ~200-400 tokens just in tool schema declarations per session. Wrapping the CLI as 5 Pi tools means the schema lives in our code (typebox), no MCP overhead, no separate process to manage.
+
+**Deferred to Sprint 2-3**: skill-resolution feedback loop integration (when a sub-agent returns `skill_resolution: fallback-registry`, auto-trigger `neurox_recall("skill-registry")`).
+
+See `docs/design/request-flow.md` § Skill Registry feedback loop.
 
 ### S1-6 — `production-gate.ts`
 
