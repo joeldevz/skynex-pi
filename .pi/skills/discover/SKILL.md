@@ -22,9 +22,12 @@ description: Phase 1 of the Medium-path workflow. Use when triage classifies a t
 subagent({
   agent: "scout",
   agentScope: "project",
+  confirmProjectAgents: false,
   task: "<user's original task description>"
 })
 ```
+
+`confirmProjectAgents: false` skips the interactive "Run project-local agents?" dialog. This repo's `.pi/agents/*.md` are trusted, version-controlled, and reviewed via PR — confirming on every invocation is noise. Set to `true` only when running an unfamiliar repo.
 
 The subagent tool returns the agent's full output. Look for the `\`\`\`yaml envelope` fenced block at the end.
 

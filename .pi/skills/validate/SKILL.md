@@ -25,6 +25,7 @@ description: Phase 4 of the Medium-path workflow. Runs test-reviewer + security 
 ```
 subagent({
   agentScope: "project",
+  confirmProjectAgents: false,
   tasks: [
     { agent: "test-reviewer",  task: "Audit tests in files: <test-file-list>" },
     { agent: "security",       task: "Security review of files: <full-list> (judge 1)" },

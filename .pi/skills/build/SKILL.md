@@ -31,6 +31,7 @@ Single slice, sequential `coder` → `verifier` chain:
 ```
 subagent({
   agentScope: "project",
+  confirmProjectAgents: false,
   chain: [
     { agent: "coder", task: "Implement slice 1 step 1 from PLAN.md: <verbatim step content including files, tests, How snippets>" },
     { agent: "verifier", task: "Verify modified files: {previous.files_changed}" }
@@ -43,6 +44,7 @@ Multiple independent slices in parallel (only when `parallel: true` and disjoint
 ```
 subagent({
   agentScope: "project",
+  confirmProjectAgents: false,
   tasks: [
     { agent: "coder", task: "Implement slice 2 step 1: <verbatim step content>" },
     { agent: "coder", task: "Implement slice 3 step 1: <verbatim step content>" }

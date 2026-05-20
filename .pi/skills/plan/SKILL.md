@@ -23,6 +23,7 @@ description: Phase 2 of the Medium-path workflow. Use after discover has returne
 subagent({
   agent: "tech-planner",
   agentScope: "project",
+  confirmProjectAgents: false,
   task: "<scout envelope verbatim YAML>\n\n---\n\n<user's original task description>"
 })
 ```

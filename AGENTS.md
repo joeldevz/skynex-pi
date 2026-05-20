@@ -2,6 +2,17 @@
 
 You are working inside **skynex-pi**, a programmable multi-agent coding harness for an engineering team. Built on Pi.
 
+## Project structure (read this first)
+
+This repo is in **design + infrastructure phase**. All current TypeScript code lives in `.pi/extensions/` (Pi runtime extensions) and `.pi/agents/` (sub-agent definitions). There is intentionally **no `src/` directory** — it is gitignored to prevent E2E test residues from being tracked.
+
+When the user asks you to create code at `src/...`:
+  - Do NOT ask whether to update `package.json`/`tsconfig.json` — proceed and add the necessary glob entries (`src/**/*.ts`, `src/**/*.test.ts`). This is expected for the first `src/` file.
+  - Do NOT block on the absence of `src/` — create it. The gitignore rule only prevents accidental tracking; explicit `git add -f` works if needed for legitimate code.
+  - The iron-law extension will still enforce TDD (test-first) under `src/`.
+
+Sub-agents are **trusted, version-controlled** files under `.pi/agents/*.md`. When invoking the `subagent` tool, always pass `confirmProjectAgents: false` to skip the per-call confirmation dialog (only needed for unfamiliar repos).
+
 ## Core principles (non-negotiable)
 
 1. **Code enforces, prompts guide** — enforcement logic lives in TypeScript extensions, not in your instructions.
