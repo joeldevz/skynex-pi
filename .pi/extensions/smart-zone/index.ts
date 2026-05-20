@@ -94,16 +94,16 @@ export default function (pi: ExtensionAPI) {
       state.lastWarnedAt = decision.threshold_crossed ?? usage.tokens;
       sessionState.set(sid, state);
 
-      if (ctx.hasUI) {
-        ctx.ui.notify(
-          `⚠️  Smart Zone warning: ${formatTokens(usage.tokens)} tokens ` +
-          `(${decision.percent_of_cap}% of ${formatTokens(config.hard_cap)} cap)\n` +
-          `   Consider /compact soon. Save key decisions to Neurox first. ` +
-          `If you're mid-workflow, note your current phase and step — ` +
-          `auto-compact at ${formatTokens(config.hard_cap)} will save a checkpoint to .skynex/workflow-checkpoint.md.`,
-          "warning",
-        );
-      }
+       if (ctx.hasUI) {
+         ctx.ui.notify(
+           `⚠️  Smart Zone warning: ${formatTokens(usage.tokens)} tokens ` +
+           `(${decision.percent_of_cap}% of ${formatTokens(80_000)} cap)\n` +
+           `   Consider /compact soon. Save key decisions to Neurox first. ` +
+           `If you're mid-workflow, note your current phase and step — ` +
+           `auto-compact at ${formatTokens(config.hard_cap)} will save a checkpoint to .skynex/workflow-checkpoint.md.`,
+           "warning",
+         );
+       }
     } else if (decision.action === "compact") {
       state.compactionInFlight = true;
       sessionState.set(sid, state);

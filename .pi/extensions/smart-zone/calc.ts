@@ -95,7 +95,7 @@ export function buildCheckpointContent(
     `# Workflow Checkpoint (auto-saved by smart-zone at ${new Date().toISOString()})`,
     ``,
     `## Context`,
-    `- Token usage: ${formatTokens(tokenUsage)} / ${formatTokens(100_000)}`,
+    `- Token usage: ${formatTokens(tokenUsage)} / ${formatTokens(80_000)}`,
     `- Session file: ${sessionFile ?? "(ephemeral)"}`,
     ``,
     `## IMPORTANT`,
