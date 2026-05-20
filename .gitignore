@@ -34,3 +34,5 @@ Thumbs.db
 *.log
 npm-debug.log*
 pnpm-debug.log*
+.skynex/skill-registry.json
+.skynex/audit.log
