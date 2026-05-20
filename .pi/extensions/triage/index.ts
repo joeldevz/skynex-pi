@@ -46,6 +46,11 @@ function loadConfig(cwd: string): TriageConfig {
  * idempotent — re-running triage just replaces the appended block.
  */
 export function buildWorkflowHint(result: TriageResult): string | undefined {
+  if (result.path === "gate_response") {
+    // Don't inject any workflow hint — the user is responding to an active gate
+    return undefined;
+  }
+
   if (result.path === "conversational") {
     return [
       "## TRIAGE: conversational",
@@ -114,10 +119,11 @@ function formatNotification(result: TriageResult): string {
     small: "▪",
     medium: "◆",
     substantial: "★",
+    gate_response: "🚦",
   } as const;
-  // Quiet UX for small talk: no banner, no TDD line.
-  if (result.path === "conversational") {
-    return `💬 TRIAGE: conversational (skip Neurox, skip TDD)`;
+  // Quiet UX for small talk and gate responses: no banner, no TDD line.
+  if (result.path === "conversational" || result.path === "gate_response") {
+    return `💬 TRIAGE: ${result.path}`;
   }
   const lines = [
     `${icons[result.path]} TRIAGE: ${result.path.toUpperCase()}`,
@@ -156,6 +162,11 @@ export default function (pi: ExtensionAPI) {
     const sessionId =
       ctx.sessionManager.getSessionFile() ?? `ephemeral-${process.pid}`;
     sessionTriageStore.set(sessionId, result);
+
+    // Gate responses: preserve current workflow state, don't inject hint or notify
+    if (result.path === "gate_response") {
+      return undefined;
+    }
 
     // Notify user (only when interactive — silent in print/RPC mode)
     if (ctx.hasUI) {

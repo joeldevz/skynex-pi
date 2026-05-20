@@ -8,8 +8,9 @@
  * small  — trivial mechanical change in 1 file.
  * medium — clear technical request, single module.
  * substantial — ambiguous, cross-module, or risky.
+ * gate_response — response to an active HITL gate (approve/cancel/edit). Preserves workflow state.
  */
-export type TriagePath = "conversational" | "small" | "medium" | "substantial";
+export type TriagePath = "conversational" | "small" | "medium" | "substantial" | "gate_response";
 
 export interface TriageResult {
   /** The path the request is routed to. */

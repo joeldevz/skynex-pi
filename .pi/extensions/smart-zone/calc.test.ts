@@ -6,7 +6,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { decideAction, formatBar, formatTokens, formatStatusLine } from "./calc.js";
+import { decideAction, formatBar, formatTokens, formatStatusLine, buildCheckpointContent } from "./calc.js";
 import { DEFAULT_SMART_ZONE_CONFIG } from "./types.js";
 
 const cfg = DEFAULT_SMART_ZONE_CONFIG;
@@ -130,4 +130,29 @@ test("status line: 0 tokens", () => {
   const line = formatStatusLine(0, cfg);
   assert.match(line, /0\/100K/);
   assert.match(line, /0%/);
+});
+
+// ─── buildCheckpointContent ──────────────────────────────────────────────────
+
+test("checkpoint: includes 'Workflow Checkpoint' header", () => {
+  const content = buildCheckpointContent(85_000, "/tmp/session.json", "medium");
+  assert.match(content, /# Workflow Checkpoint/);
+});
+
+test("checkpoint: includes recovery steps section", () => {
+  const content = buildCheckpointContent(85_000, "/tmp/session.json", "medium");
+  assert.match(content, /## Recovery steps/);
+  assert.match(content, /Read \.skynex\/ directory/);
+  assert.match(content, /git diff/);
+});
+
+test("checkpoint: includes triage classification when provided", () => {
+  const content = buildCheckpointContent(90_000, "/tmp/session.json", "substantial");
+  assert.match(content, /## Triage classification: substantial/);
+});
+
+test("checkpoint: handles undefined triage classification gracefully", () => {
+  const content = buildCheckpointContent(90_000, "/tmp/session.json", undefined);
+  assert.match(content, /## Triage classification: unknown/);
+  assert.doesNotMatch(content, /undefined/);
 });

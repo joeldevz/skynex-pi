@@ -10,6 +10,7 @@ dist/
 .skynex/production-gate.json
 .skynex/audit.log
 .skynex/project.json
+.skynex/workflow-checkpoint.md
 .env
 .env.local
 .env.*.local
