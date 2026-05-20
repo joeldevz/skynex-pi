@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build artifacts
+dist/
+*.tsbuildinfo
+
+# Local config (sensitive)
+.skynex/production-gate.json
+.skynex/audit.log
+.skynex/project.json
+.env
+.env.local
+.env.*.local
+
+# Pi local artifacts
+.pi/sessions/
+.pi/cache/
+
+# Backups
+*.backup-*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.example.json
+*.swp
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*

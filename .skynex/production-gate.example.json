@@ -1,0 +1,33 @@
+{
+  "$comment": "EXAMPLE config. Copy to .skynex/production-gate.json and customize. The real file is gitignored.",
+  "mode": "strict",
+  "audit_log": {
+    "path": ".skynex/audit.log",
+    "auto_gitignore": true,
+    "rotate_at_mb": 50,
+    "retention_days": 365
+  },
+  "confirmation": {
+    "require_typed": true,
+    "typed_phrase": "yes apply",
+    "afk_behavior": "always_abort"
+  },
+  "safe_contexts": {
+    "kubectl": ["minikube", "kind-local", "docker-desktop"],
+    "git_branches": ["personal/*", "feat/*", "fix/*", "chore/*"],
+    "comment": "Add YOUR safe contexts/branches here. Everything else triggers the gate."
+  },
+  "patterns": {
+    "kubectl":         { "enabled": true, "block_verbs": ["apply", "delete", "scale", "rollout", "drain", "exec", "edit", "patch", "replace"], "always_allow_verbs": ["get", "describe", "logs", "top", "explain", "diff", "version"] },
+    "db_migrations":   { "enabled": true, "tools": ["prisma migrate deploy", "rails db:migrate", "alembic upgrade", "knex migrate:latest", "sqlx migrate run", "flyway migrate", "drizzle-kit push"] },
+    "db_direct":       { "enabled": true, "regex_blockers": ["(?i)(DELETE|DROP|TRUNCATE|ALTER)\\s+(?!.*WHERE)", "(?i)UPDATE\\s+\\w+\\s+SET.*(?!WHERE)", "(?i)FLUSHALL"] },
+    "terraform":       { "enabled": true, "block_verbs": ["apply", "destroy", "import"] },
+    "helm":            { "enabled": true, "block_verbs": ["upgrade", "uninstall", "rollback", "install"] },
+    "git_force":       { "enabled": true },
+    "git_main_push":   { "enabled": true, "protected_branches": ["main", "master", "production", "prod", "release/*"] },
+    "publishing":      { "enabled": true, "tools": ["npm publish", "pnpm publish", "yarn publish", "cargo publish", "twine upload"] },
+    "destructive_fs":  { "enabled": true, "patterns": ["rm -rf /", "rm -rf /*", "sudo rm", "chmod 777 /", "chown -R"] },
+    "cloud_delete":    { "enabled": true, "tools": ["aws", "gcloud", "az"], "verb_regex": "(?i)\\b(delete|remove|terminate|destroy)\\b" }
+  },
+  "custom_patterns": []
+}

@@ -1,0 +1,25 @@
+{
+  "name": "skynex-pi",
+  "version": "0.1.0",
+  "description": "Programmable multi-agent coding harness for engineering teams. Built on Pi.",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "setup": "bash scripts/setup.sh"
+  },
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "^0.75.3"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "@types/node": "^20.0.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/joeldevz/skynex-pi"
+  },
+  "license": "MIT"
+}

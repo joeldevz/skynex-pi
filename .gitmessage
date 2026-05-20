@@ -1,0 +1,18 @@
+# {type}({scope}): {subject in imperative, ≤72 chars}
+#
+# Allowed types: feat, fix, refactor, docs, test, chore, style, perf
+# Rule: one commit = one atomic decision (revertible in isolation)
+#
+# --- WHY ---
+# What problem did this solve / context that matters
+#
+#
+# --- REJECTED ALTERNATIVES (optional) ---
+# Only when there were real trade-offs. Example:
+# - Option X: rejected because ...
+# - Option Y: rejected because ...
+#
+#
+# --- REFS ---
+# Related issues, ADRs, docs (NO Neurox IDs — Neurox stays decoupled)
+#

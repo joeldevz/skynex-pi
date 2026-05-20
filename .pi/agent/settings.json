@@ -1,0 +1,13 @@
+{
+  "skills": [
+    ".pi/skills"
+  ],
+  "extensions": [
+    ".pi/extensions",
+    "extensions/core",
+    "extensions/agents",
+    "extensions/ui",
+    "extensions/automation"
+  ],
+  "theme": "dark"
+}
