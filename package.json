@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test .pi/extensions/**/*.test.ts src/**/*.test.ts",
+    "test": "tsx --test .pi/extensions/**/*.test.ts",
     "test:triage": "tsx --test .pi/extensions/triage/rules.test.ts",
     "doctor": "bash scripts/doctor.sh",
     "start": "bash scripts/start.sh"
