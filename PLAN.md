@@ -127,16 +127,27 @@ Commands: `/skills:list`, `/skills:refresh`, `/skills:audit`, `/skills:budget`, 
 
 See `docs/design/request-flow.md` § Skill Registry.
 
-### S1-4 — `smart-zone.ts`
+### S1-4 — `smart-zone` ✅ DONE 2026-05-20
 
-**File**: `extensions/core/smart-zone.ts`
-**Hook**: `message`, `turn_end`
-**Estimated**: 1 day
-**Depends on**: nothing
+**Files**:
+- `extensions/core/smart-zone/types.ts` — `SmartZoneConfig`, `DEFAULT_SMART_ZONE_CONFIG`, `ZoneDecision`
+- `extensions/core/smart-zone/calc.ts` — pure: `decideAction`, `formatBar`, `formatTokens`, `formatStatusLine`
+- `extensions/core/smart-zone/index.ts` — Pi extension: `turn_end` hook + 2 commands
+- `extensions/core/smart-zone/calc.test.ts` — 19 pure-logic tests
 
-Reads session token count after each turn. Warns at 80K. Triggers auto-compact at 100K (after notifying user). Updates status bar with live token usage.
+**Hook**: `turn_end`
+**Status**: implemented, typechecked, 19/19 tests pass + 87 prior = 106/106 overall
+**Lines**: ~430 (types: 60, calc: 80, index: 190, tests: 100)
 
-Already drafted earlier in session. Will be cleaned up in this sprint.
+Reads `ctx.getContextUsage()` after each LLM turn. At 80K notifies user (with hysteresis: re-warn only every +5K to avoid spam). At 100K triggers `ctx.compact()` with custom instructions, prevents re-fire via `compactionInFlight` flag.
+
+Status bar shows live `tokens 45K/100K ████░░░░░░ 45%` updated every turn.
+
+Threshold is in **absolute tokens**, not percent of context window: a 200K window does NOT mean we can use 160K — the smart zone is 100K regardless. (Validated by Chroma research 2025: attention degrades quadratically beyond ~100K.)
+
+**Decision during implementation**: hysteresis on warning step (default +5K) prevents notification spam. The model emits 5-10 tokens per turn end on incremental builds; without hysteresis the user would see the same warning every turn.
+
+See `docs/design/request-flow.md` § principles #1.
 
 ### S1-5 — `neurox-tool.ts`
 
