@@ -1,6 +1,6 @@
 ---
 name: specify
-description: Substantial-path specification skill. Invokes product-planner + architect in parallel, merges into unified SPEC.md, then STOPS for user approval before /skill:plan.
+description: Substantial-path specification skill. Invokes product-planner + architect IN PARALLEL, merges into unified SPEC.md. By default AUTO-CONTINUES to /skill:plan (no gate). Only blocks for user approval when SKYNEX_HITL=strict.
 ---
 
 # specify — Phase 2: parallel WHAT+WHY+HOW specification
@@ -9,14 +9,15 @@ description: Substantial-path specification skill. Invokes product-planner + arc
 
 ## Compact Rules
 
-- Invoke product-planner + architect IN PARALLEL via single `subagent({tasks: [...]})` call — NEVER serial.
-- Pass scope: "FULL spec" so product-planner produces complete acceptance criteria (up to 10) and architect produces full design.
-- Both agents receive: user task + scout envelope + approved proposal.md content.
-- Merge both envelopes into `.skynex/<feature-slug>/SPEC.md` with two sections: "## What & Why (Product)" and "## How (Architecture)".
-- Highlight any architect risks of severity `critical` or `high` at the top of SPEC.md in a "⚠️ Risks to Confirm" box.
-- STOP after writing. Surface SPEC.md path + risks summary to user. Wait for `approve` / `edit "<note>"` / `cancel`.
-- If user says `edit`, re-invoke whichever agent(s) the user note targets (product, architect, or both).
-- Only proceed to `/skill:plan` after explicit `approve`.
+- Invoke product-planner + architect IN PARALLEL via single subagent({tasks: [...]}) call — NEVER serial
+- Pass scope: "FULL spec" so product-planner produces complete acceptance criteria (up to 10) and architect produces full design
+- Both agents receive: user task + scout envelope + approved-or-auto-generated proposal.md content
+- Merge both envelopes into .skynex/<feature-slug>/SPEC.md with two sections: "## What & Why (Product)" and "## How (Architecture)"
+- Highlight any architect risks of severity `critical` or `high` at the top of SPEC.md in a "⚠️ Risks to Confirm" box
+- Default behavior: AUTO-CONTINUE to /skill:plan immediately after writing SPEC.md. Do NOT stop, do NOT ask user.
+- ONLY if env var SKYNEX_HITL=strict is set: STOP after writing. Show the gate panel and wait for approve/dale/ok/sí/go (continue), edit "<note>" (revise), or cancel/no/stop (abort)
+- If SKYNEX_HITL=none: same as default (auto-continue)
+- When auto-continuing, surface a brief one-line notification: "📄 SPEC written: .skynex/<slug>/SPEC.md (N high/critical risks) → continuing to /skill:plan"
 
 ## How to invoke
 
@@ -38,6 +39,44 @@ subagent({
 ```
 
 The `subagent` tool returns an array of 2 results in submission order. Each contains a final `yaml envelope` fenced block. BOTH run in parallel; wait for both to complete before merging.
+
+## HITL Behavior
+
+Controlled by env var `SKYNEX_HITL`:
+
+| `SKYNEX_HITL` | Behavior |
+|---|---|
+| _(unset)_ or `single` | AUTO-CONTINUE to /skill:plan after writing SPEC.md |
+| `strict` | STOP. Show gate panel. Wait for approve/edit/cancel. |
+| `none` | AUTO-CONTINUE (same as default) |
+
+Default = `single` = only the final gate in /skill:plan blocks.
+
+### Strict-mode gate panel (only when SKYNEX_HITL=strict)
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🚦 GATE 2 of 3 — Spec review (SKYNEX_HITL=strict)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Feature: <feature-slug>
+  Artifact: .skynex/<feature-slug>/SPEC.md
+
+  ⚠️ Risks summary:
+    critical: <N> | high: <N> | medium: <N> | low: <N>
+
+  Reply with one of:
+    • approve | dale | ok | sí | go     → continue to /skill:plan
+    • edit "<note>"                      → revise (product, architect, or both)
+    • cancel | no | stop | abortar       → abort workflow
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+Accept these as approval (case-insensitive): `approve`, `yes`, `y`, `dale`, `ok`, `sí`, `si`, `go`, `continúa`, `continua`, `next`.
+Accept these as cancel: `cancel`, `no`, `n`, `stop`, `para`, `abortar`, `abort`.
+Anything starting with `edit` → re-invoke whichever agent(s) the note targets.
+If response ambiguous, ASK ONCE to clarify.
 
 ## Workflow
 
@@ -62,12 +101,9 @@ The `subagent` tool returns an array of 2 results in submission order. Each cont
 
 **e. Write to `.skynex/<feature-slug>/SPEC.md`.**
 
-**f. Surface to user** — display SPEC.md path, content, and risks summary.
-
-**g. STOP and wait** for explicit user response:
-   - `approve` → return envelope with status=ready, proceed to `/skill:plan`
-   - `edit "<note>"` → determine which agent(s) to re-invoke and loop to step b
-   - `cancel` → return envelope with status=cancelled, stop workflow
+**f. Check `SKYNEX_HITL` env var:**
+   - If `strict` → render the gate panel (see HITL Behavior section) and wait for response
+   - Otherwise → emit a one-line notification "📄 SPEC written: <path> (N high/critical risks) → continuing to /skill:plan" and immediately invoke /skill:plan
 
 ## SPEC.md template
 
@@ -174,14 +210,16 @@ sources:
   product_planner_envelope: "<inline or path>"
   architect_envelope: "<inline or path>"
 risks_summary:
-  critical: <count>
-  high: <count>
-  medium: <count>
-  low: <count>
-awaiting: approval | edit_note | clarification | none
+  critical: 0
+  high: 0
+  medium: 0
+  low: 0
+hitl_mode: single | strict | none
+awaiting: approval | edit_note | none
+next_action: continue_to_plan | wait_for_approval | aborted
 ```
 
-Return this envelope to the orchestrator. Do NOT invoke `/skill:plan` until user sends `approve`.
+Return this envelope to the orchestrator.
 
 ## Common pitfalls
 
@@ -190,3 +228,6 @@ Return this envelope to the orchestrator. Do NOT invoke `/skill:plan` until user
 - **Don't omit the ⚠️ Risks box even if empty** — always include it; show "None reported at this stage." instead of deleting the section entirely.
 - **If feature-slug doesn't have a proposal.md, the workflow was skipped** — surface error, do NOT fabricate or re-run propose.
 - **Don't reshape scout findings or proposal content** — pass them verbatim to the agents; merging happens after agent output, not before.
+- **Don't STOP on default behavior** — only stop on SKYNEX_HITL=strict.
+- **Don't skip the one-line notification** — user needs visibility into SPEC.md being written + risk counts before plan takes over.
+- **The strict-mode panel includes risk counts; the default-mode notification also surfaces high/critical risk count** — both modes show this info, format differs.

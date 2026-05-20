@@ -74,19 +74,37 @@ export function buildWorkflowHint(result: TriageResult): string | undefined {
   }
 
   // substantial
+  const hitlMode = process.env.SKYNEX_HITL ?? "single";
+  const gateDescription =
+    hitlMode === "strict"
+      ? "HITL gates at steps 2, 3, 4 (SKYNEX_HITL=strict mode)"
+      : hitlMode === "none"
+        ? "NO HITL gates (SKYNEX_HITL=none — escape hatch, use with caution)"
+        : "SINGLE HITL gate at step 4 only (SKYNEX_HITL=single, default)";
+
   return [
-    "## TRIAGE: substantial (workflow MANDATORY, no skipping, HITL gates enforced)",
+    `## TRIAGE: substantial (${gateDescription})`,
     "Risk keyword detected OR cross-module / ambiguous task. Required steps:",
     "  1. /skill:discover  → scout exploration (read scout envelope before proceeding)",
-    "  2. /skill:propose   → product-planner writes 1-page proposal.md → STOP for user approval",
-    "  3. /skill:specify   → product-planner + architect IN PARALLEL → SPEC.md → STOP for user approval",
-    "  4. /skill:plan      → tech-planner reads SPEC.md → PLAN.md (slice gate STOPS if slices_count > 3)",
+    "  2. /skill:propose   → product-planner writes 1-page proposal.md → auto-continue (or gate if SKYNEX_HITL=strict)",
+    "  3. /skill:specify   → product-planner + architect IN PARALLEL → SPEC.md → auto-continue (or gate if SKYNEX_HITL=strict)",
+    "  4. /skill:plan      → tech-planner reads SPEC.md → PLAN.md → 🚦 UNIFIED GATE (always, unless SKYNEX_HITL=none)",
     "  5. /skill:build     → coder + verifier per slice (chain or parallel for disjoint slices)",
     "  6. /skill:validate  → test-reviewer + security ×2 + skill-validator (parallel)",
-    "HITL gates at steps 2, 3, and 4 (when slices_count > 3) are MANDATORY — wait for explicit `approve` / `edit` / `cancel`.",
+    "",
+    "HITL gate behavior (env var SKYNEX_HITL):",
+    "  • default/'single' → ONE gate at /skill:plan after PLAN.md is written",
+    "  • 'strict'         → THREE gates: after proposal, after SPEC, after PLAN",
+    "  • 'none'           → NO gates, full auto execution (escape hatch)",
+    "",
+    "When stopping at a gate, accept natural-language responses:",
+    "  • approve | dale | ok | sí | go | proceed → continue to next phase",
+    "  • edit \"<note>\"                          → re-invoke planner with the note",
+    "  • cancel | no | stop | abortar             → abort workflow",
+    "  • Ambiguous? Ask ONE clarifying question, do not assume.",
+    "",
     "After /skill:validate APPROVED, the archive extension auto-runs archivist on session_shutdown.",
-    "NEVER write code before steps 1-4 are all approved.",
-    "NEVER skip /skill:propose even if the approach seems obvious — it's the early HITL gate.",
+    "NEVER write code before /skill:plan gate is passed (or SKYNEX_HITL=none).",
   ].join("\n");
 }
 

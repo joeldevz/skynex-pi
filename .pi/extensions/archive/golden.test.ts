@@ -39,6 +39,66 @@ test("golden: substantial hint references archive + archivist", () => {
   assert.ok(hint!.includes("archivist"), "missing archivist reference in hint");
 });
 
+test("golden: substantial hint in default mode mentions UNIFIED GATE at step 4", () => {
+  const prior = process.env.SKYNEX_HITL;
+  delete process.env.SKYNEX_HITL;
+  try {
+    const result = triage({ prompt: "rebuild auth for SAML SSO", cwd: "/tmp" }, DEFAULT_TRIAGE_CONFIG);
+    const hint = buildWorkflowHint(result);
+    assert.ok(hint, "hint must not be undefined");
+    assert.match(hint!, /SINGLE HITL gate/);
+    assert.match(hint!, /UNIFIED GATE/);
+  } finally {
+    if (prior !== undefined) process.env.SKYNEX_HITL = prior;
+    else delete process.env.SKYNEX_HITL;
+  }
+});
+
+test("golden: substantial hint in strict mode mentions 3 gates", () => {
+  const prior = process.env.SKYNEX_HITL;
+  process.env.SKYNEX_HITL = "strict";
+  try {
+    const result = triage({ prompt: "rebuild auth for SAML SSO", cwd: "/tmp" }, DEFAULT_TRIAGE_CONFIG);
+    const hint = buildWorkflowHint(result);
+    assert.ok(hint, "hint must not be undefined");
+    assert.match(hint!, /steps 2, 3, 4/);
+  } finally {
+    if (prior !== undefined) process.env.SKYNEX_HITL = prior;
+    else delete process.env.SKYNEX_HITL;
+  }
+});
+
+test("golden: substantial hint in none mode mentions escape hatch", () => {
+  const prior = process.env.SKYNEX_HITL;
+  process.env.SKYNEX_HITL = "none";
+  try {
+    const result = triage({ prompt: "rebuild auth for SAML SSO", cwd: "/tmp" }, DEFAULT_TRIAGE_CONFIG);
+    const hint = buildWorkflowHint(result);
+    assert.ok(hint, "hint must not be undefined");
+    assert.match(hint!, /NO HITL gates|escape hatch/i);
+  } finally {
+    if (prior !== undefined) process.env.SKYNEX_HITL = prior;
+    else delete process.env.SKYNEX_HITL;
+  }
+});
+
+test("golden: substantial hint mentions natural-language response keywords", () => {
+  const prior = process.env.SKYNEX_HITL;
+  delete process.env.SKYNEX_HITL;
+  try {
+    const result = triage({ prompt: "rebuild auth for SAML SSO", cwd: "/tmp" }, DEFAULT_TRIAGE_CONFIG);
+    const hint = buildWorkflowHint(result);
+    assert.ok(hint, "hint must not be undefined");
+    assert.match(hint!, /dale|approve/);
+    assert.match(hint!, /cancel|stop|abortar/);
+  } finally {
+    if (prior !== undefined) process.env.SKYNEX_HITL = prior;
+    else delete process.env.SKYNEX_HITL;
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────
+// Suite 2: Skill registry resolves new agents
 // ─────────────────────────────────────────────────────────────────
 // Suite 2: Skill registry resolves new agents
 // ─────────────────────────────────────────────────────────────────
@@ -159,6 +219,13 @@ test("golden: propose SKILL.md exists with name+description frontmatter", () => 
   assert.match(content, /^## Compact Rules/m, "missing ## Compact Rules section");
 });
 
+test("golden: propose SKILL.md mentions SKYNEX_HITL env var", () => {
+  const p = resolve(REPO_ROOT, ".pi/skills/propose/SKILL.md");
+  const content = readFileSync(p, "utf8");
+  assert.match(content, /SKYNEX_HITL/);
+  assert.match(content, /AUTO-CONTINUE/i);
+});
+
 test("golden: specify SKILL.md exists with proper structure", () => {
   const p = resolve(REPO_ROOT, ".pi/skills/specify/SKILL.md");
   assert.ok(existsSync(p), `specify SKILL.md not found at ${p}`);
@@ -166,6 +233,13 @@ test("golden: specify SKILL.md exists with proper structure", () => {
   assert.match(content, /name:\s*specify/m, "missing name: specify in frontmatter");
   assert.match(content, /description:/m, "missing description");
   assert.match(content, /^## Compact Rules/m, "missing ## Compact Rules section");
+});
+
+test("golden: specify SKILL.md mentions SKYNEX_HITL env var", () => {
+  const p = resolve(REPO_ROOT, ".pi/skills/specify/SKILL.md");
+  const content = readFileSync(p, "utf8");
+  assert.match(content, /SKYNEX_HITL/);
+  assert.match(content, /AUTO-CONTINUE/i);
 });
 
 test("golden: product-planner.md exists with agent structure", () => {
@@ -193,6 +267,13 @@ test("golden: archivist.md exists with agent structure", () => {
   assert.match(content, /name:\s*archivist/m, "wrong name in archivist.md");
   assert.match(content, /```yaml/, "missing envelope block in archivist.md");
   assert.match(content, /Emit the envelope and stop/i, "missing kill-switch in archivist.md");
+});
+
+test("golden: plan SKILL.md mentions UNIFIED GATE and SKYNEX_HITL", () => {
+  const p = resolve(REPO_ROOT, ".pi/skills/plan/SKILL.md");
+  const content = readFileSync(p, "utf8");
+  assert.match(content, /SKYNEX_HITL/);
+  assert.match(content, /UNIFIED GATE|unified gate/i);
 });
 
 // ─────────────────────────────────────────────────────────────────

@@ -107,20 +107,41 @@ Handle the change yourself with TDD if needed (the iron-law hook enforces it for
    - If scout found **no relevant context** AND the task is **self-contained (≤2 files, no risk keywords)** → you MAY skip plan/validate and go directly to build with TDD.
 3. If you proceeded to plan → continue to `/skill:build` → `/skill:validate`.
 
-### `substantial` — workflow MANDATORY, HITL gates enforced
+### `substantial` — workflow MANDATORY, single HITL gate by default
+
+Required steps in order:
 
 1. `/skill:discover` — REQUIRED (scout exploration, read scout envelope)
-2. `/skill:propose` — REQUIRED (product-planner writes 1-page proposal.md → **HITL gate: STOP for user approval**)
-3. `/skill:specify` — REQUIRED (product-planner + architect IN PARALLEL → SPEC.md → **HITL gate: STOP for user approval**)
-4. `/skill:plan` — REQUIRED (tech-planner reads SPEC.md → PLAN.md → **HITL gate if slices_count > 3**)
-5. `/skill:build` — REQUIRED per slice (coder + verifier chain, parallel for disjoint slices)
-6. `/skill:validate` — REQUIRED before completion (test-reviewer + security ×2 + skill-validator in parallel)
+2. `/skill:propose` — REQUIRED (product-planner writes 1-page proposal.md, auto-continues to specify)
+3. `/skill:specify` — REQUIRED (product-planner + architect IN PARALLEL → SPEC.md, auto-continues to plan)
+4. `/skill:plan` — REQUIRED (tech-planner reads SPEC.md → PLAN.md → **🚦 UNIFIED HITL GATE**)
+5. `/skill:build` — REQUIRED per slice (coder + verifier chain; parallel for disjoint slices)
+6. `/skill:validate` — REQUIRED before completion (test-reviewer + security ×2 + skill-validator, parallel)
 
-**Auto-archive on session_shutdown**: the `archive` extension detects substantial-path sessions that reached at least the build phase, and notifies the user to run `/archive:run` which invokes the archivist sub-agent to synthesize Neurox observations.
+**The unified gate at step 4 is the SINGLE checkpoint by default.** The user sees `proposal.md`, `SPEC.md`, and `PLAN.md` together in `.skynex/<feature-slug>/` and approves once before execution.
 
-**Never skip phases.** Never write code before steps 1-4 are all approved by the user. HITL gates at steps 2, 3, and 4 (when slices_count > 3) are mandatory — wait for explicit `approve` / `edit "<note>"` / `cancel`.
+### HITL behavior — env var `SKYNEX_HITL`
 
-**When substantial path is triggered**: auth/payment/migration/security/cross-cutting keywords, OR `module_count >= 3`, OR `ambiguity_hits >= 3` (configurable in `.skynex/triage.config.json`).
+| `SKYNEX_HITL` | Behavior |
+|---|---|
+| _(unset)_ or `single` | **Default.** One gate at /skill:plan. Auto-continues propose → specify → plan, then blocks. |
+| `strict` | Three gates: after proposal.md, after SPEC.md, after PLAN.md. |
+| `none` | Escape hatch. NO gates. Full auto execution end-to-end. Use only when you trust the workflow completely. |
+
+### Responding to the gate
+
+At the gate, reply with natural language:
+- **Approve** (continue to /skill:build): `approve`, `dale`, `ok`, `sí`, `go`, `proceed`, `ejecuta`
+- **Edit** (revise plan with note): `edit "add OIDC support"`, `modify "split slice 3"`, etc.
+- **Cancel** (abort): `cancel`, `no`, `stop`, `para`, `abortar`
+
+Ambiguous responses are met with one clarifying question. The model does NOT proceed without an unambiguous answer.
+
+### Auto-archive on session_shutdown
+
+The `archive` extension detects substantial-path sessions that reached at least the build phase, and notifies you to run `/archive:run` which invokes the archivist sub-agent to synthesize Neurox observations.
+
+**Triggers for substantial classification**: auth/payment/migration/security/cross-cutting keywords, OR `module_count >= 3`, OR `ambiguity_hits >= 3` (configurable in `.skynex/triage.config.json`).
 
 ### The 6 phase skills (substantial path)
 

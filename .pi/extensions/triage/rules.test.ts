@@ -371,13 +371,20 @@ test("substantial hint: includes /skill:specify", () => {
   assert.match(hint, /\/skill:specify/);
 });
 
-test("substantial hint: mentions HITL gates at steps 2, 3, 4", () => {
-  const r = tri("rebuild auth to support SAML SSO");
-  const hint = buildWorkflowHint(r);
-  assert.ok(hint);
-  assert.match(hint, /HITL gates/);
-  assert.match(hint, /steps 2, 3, and 4/);
-  assert.match(hint, /MANDATORY/);
+test("substantial hint: mentions UNIFIED GATE at step 4 in default mode", () => {
+  const prior = process.env.SKYNEX_HITL;
+  delete process.env.SKYNEX_HITL;
+  try {
+    const r = tri("rebuild auth to support SAML SSO");
+    const hint = buildWorkflowHint(r);
+    assert.ok(hint);
+    assert.match(hint, /UNIFIED GATE/);
+    assert.match(hint, /step 4/);
+    // Default mode should mention "default/'single'"
+    assert.match(hint, /single.*default/i);
+  } finally {
+    if (prior !== undefined) process.env.SKYNEX_HITL = prior;
+  }
 });
 
 test("substantial hint: mentions archive extension and archivist", () => {
@@ -386,6 +393,58 @@ test("substantial hint: mentions archive extension and archivist", () => {
   assert.ok(hint);
   assert.match(hint, /archive extension/);
   assert.match(hint, /archivist/);
+});
+
+test("substantial hint: default mode mentions 'single' gate", () => {
+  const prior = process.env.SKYNEX_HITL;
+  delete process.env.SKYNEX_HITL;
+  try {
+    const r = tri("rebuild auth to support SAML SSO");
+    const hint = buildWorkflowHint(r);
+    assert.ok(hint);
+    assert.match(hint, /SINGLE HITL gate/);
+  } finally {
+    if (prior !== undefined) process.env.SKYNEX_HITL = prior;
+  }
+});
+
+test("substantial hint: strict mode mentions 3 gates", () => {
+  const prior = process.env.SKYNEX_HITL;
+  process.env.SKYNEX_HITL = "strict";
+  try {
+    const r = tri("rebuild auth to support SAML SSO");
+    const hint = buildWorkflowHint(r);
+    assert.ok(hint);
+    assert.match(hint, /steps 2, 3, 4.*strict/i);
+  } finally {
+    if (prior !== undefined) process.env.SKYNEX_HITL = prior;
+    else delete process.env.SKYNEX_HITL;
+  }
+});
+
+test("substantial hint: none mode mentions escape hatch", () => {
+  const prior = process.env.SKYNEX_HITL;
+  process.env.SKYNEX_HITL = "none";
+  try {
+    const r = tri("rebuild auth to support SAML SSO");
+    const hint = buildWorkflowHint(r);
+    assert.ok(hint);
+    assert.match(hint, /escape hatch/);
+    assert.match(hint, /none/);
+  } finally {
+    if (prior !== undefined) process.env.SKYNEX_HITL = prior;
+    else delete process.env.SKYNEX_HITL;
+  }
+});
+
+test("substantial hint: mentions natural-language responses", () => {
+  const r = tri("rebuild auth to support SAML SSO");
+  const hint = buildWorkflowHint(r);
+  assert.ok(hint);
+  // Check for keywords from the natural-language section
+  assert.match(hint, /dale|approve/i);
+  assert.match(hint, /edit/i);
+  assert.match(hint, /cancel|abortar/i);
 });
 
 test("medium hint: unchanged (no /skill:propose or /skill:specify)", () => {
