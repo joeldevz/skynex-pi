@@ -1,0 +1,7 @@
+{
+  "_comment": "Extensions are auto-discovered from .pi/extensions/*/index.ts (Pi convention).",
+  "skills": [
+    "./.pi/skills"
+  ],
+  "theme": "dark"
+}

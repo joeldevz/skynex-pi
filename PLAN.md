@@ -31,14 +31,21 @@ Each sprint produces something that works end-to-end at increasing capability. A
 
 **Goal**: 6 extensions that enforce the discipline of skynex through Pi hooks (not prompts). At the end of this sprint, Small path works end-to-end and infrastructure is ready for the workflow phases.
 
-### S1-1 — `triage.ts`
+### S1-1 — `triage` ✅ DONE 2026-05-20
 
-**File**: `extensions/core/triage.ts`
+**Files**:
+- `extensions/core/triage/types.ts` — `TriageResult`, `TriageConfig`, `DEFAULT_TRIAGE_CONFIG`
+- `extensions/core/triage/rules.ts` — pure deterministic matchers (zero I/O, zero LLM)
+- `extensions/core/triage/index.ts` — Pi extension (hook `before_agent_start`, commands `/triage:status`, `/triage:test`)
+- `extensions/core/triage/rules.test.ts` — 25 unit tests (all pass)
+
 **Hook**: `before_agent_start`
-**Estimated**: 2 days
-**Depends on**: nothing
+**Status**: implemented, typechecked, 25/25 tests pass
+**Lines**: 415 (types: 90, rules: 145, index: 145, tests: 135)
 
-Reads the user prompt, runs deterministic rules to classify path = small / medium / substantial. Also detects `tdd` flag and risk keywords.
+Reads the user prompt, runs deterministic rules to classify path = small / medium / substantial. Detects `tdd` flag and risk keywords. Result stored in `sessionTriageStore` keyed by session file, retrievable by phase extensions via exported `getTriage(sessionFile)` helper.
+
+Config loaded from `.skynex/triage.json` if present, defaults otherwise.
 
 Output:
 ```typescript
@@ -49,61 +56,181 @@ interface TriageResult {
   estimated_files: number;
   estimated_modules: number;
   has_risk_keywords: boolean;
+  signals: string[];   // audit trail
+  ts: string;          // ISO 8601
 }
 ```
 
-Stored in session state. Read by all subsequent phase extensions.
+**Decision during implementation**: `auth`/`payment`/etc. risk keywords promote to `substantial` even for trivial-looking changes (e.g., renaming inside `src/auth/`). Intentional — anything touching auth deserves the rigor.
 
-### S1-2 — `iron-law.ts` (L4)
+Stored in session state. Read by all subsequent phase extensions in Sprint 2-3.
 
-**File**: `extensions/core/iron-law.ts`
-**Hook**: `tool_call` on `write`/`edit`, `tool_result` after impl
-**Estimated**: 3 days
-**Depends on**: triage (reads `tdd` flag)
+### S1-2 — `iron-law` (L4) ✅ DONE 2026-05-20
 
-Always-on TDD enforcement with whitelist. Blocks `write` to production code unless a failing test exists. Blocks editing of green tests. Override available with logged reason.
+**Files**:
+- `extensions/core/iron-law/types.ts` — `IronLawConfig`, `DEFAULT_IRON_LAW_CONFIG`, override + state types
+- `extensions/core/iron-law/matcher.ts` — pure glob matching (uses `minimatch`)
+- `extensions/core/iron-law/index.ts` — Pi extension: 3 hook rules + 2 commands
+- `extensions/core/iron-law/matcher.test.ts` — 28 unit tests (all pass)
+
+**Hook**: `tool_call` on `write`/`edit`
+**Status**: implemented, typechecked, 28/28 matcher tests pass + 53/53 overall
+**Lines**: ~580 (types: 110, matcher: 75, index: 280, tests: 115)
+
+Enforces three rules:
+1. Production code (`src/**/*.ts`, etc.) requires a test file
+2. Test must fail BEFORE writing impl (runs the test if pre-existing)
+3. Cannot edit a passing test
+
+Whitelist: docs, configs, `.github/`, `scripts/`, `.skynex/`, test files themselves.
+
+Test runner detected from `package.json` scripts (jest/vitest/tsx supported).
+
+Override: `/iron-law:override <file> [reason]` — one-shot per file, logged to `.skynex/iron-law-overrides.md` for team audit.
+
+Status command: `/iron-law:status` — shows files written this session + active overrides.
+
+**Decision during implementation**: replaced hand-rolled `globToRegex` with `minimatch` (8 glob tests failed with custom impl, 0 with minimatch). Added minimatch as direct dep. Same library Pi itself uses.
 
 See `docs/design/request-flow.md` § TDD Iron Law (L4).
 
-### S1-3 — `skill-registry.ts`
+### S1-3 — `skill-registry` ✅ DONE 2026-05-20
 
-**File**: `extensions/core/skill-registry.ts`
-**Hook**: `before_subagent_dispatch`, `resources_discover`
-**Estimated**: 3 days
-**Depends on**: nothing (but provides input to all phase extensions)
+**Files**:
+- `extensions/core/skill-registry/types.ts` — `SkillEntry`, `SkillRegistry`, `RegistryConfig` + defaults
+- `extensions/core/skill-registry/parser.ts` — pure: `extractCompactRules`, `estimateTokens`, `sha256`, `formatRulesForPrompt`
+- `extensions/core/skill-registry/registry.ts` — builder, cache, agent-map lookup (uses Pi's `loadSkills` + `parseFrontmatter`)
+- `extensions/core/skill-registry/index.ts` — Pi extension + 5 commands
+- `extensions/core/skill-registry/parser.test.ts` — 21 pure-parser tests
+- `extensions/core/skill-registry/registry.test.ts` — 13 integration tests with tmp dirs
 
-Scans `.pi/skills/` + global, extracts `## Compact Rules` per skill, caches by hash, injects per-agent subset into sub-agent prompts. Tracks usage metrics. Detects skill drift.
+**Hook**: `session_start`
+**Status**: implemented, typechecked, 34/34 tests pass + 53 prior = 87/87 overall
+**Lines**: ~830 (types: 90, parser: 130, registry: 175, index: 250, tests: 185)
+
+What it does:
+- Discovers all SKILL.md via Pi's `loadSkills` (`~/.pi/agent/skills/`, `~/.agents/skills/`, `.pi/skills/`, `.agents/skills/`)
+- For each: reads SKILL.md → `parseFrontmatter` → `extractCompactRules` from `## Compact Rules` section
+- Hashes each file (SHA-256), caches result in `.skynex/skill-registry.json`
+- On next session: validates cache by re-hashing source files → reuses if unchanged, rebuilds otherwise
+- Token-budget enforcement (default 1000 tokens/skill) with `exceedsBudget` flag + diagnostics
+- Per-agent subset assignment via `AGENT_SKILL_MAP` (orchestrator/coder/verifier/security/etc.)
+- Exports `getCurrentRegistry()`, `getSkillsForAgent(agent)`, `buildPromptInjection(agent)` for Sprint 2-3 phase extensions
+
+Commands: `/skills:list`, `/skills:refresh`, `/skills:audit`, `/skills:budget`, `/skills:show <name>`
+
+**Deferred to Sprint 2-3** (need sub-agent dispatch + return envelope):
+- Skill resolution feedback loop (auto-refresh on `skill_resolution: fallback-*`)
+- Per-skill usage metrics (count, last_used) → drift detector
+
+**Decision during implementation**: reuse Pi's `loadSkills` instead of writing our own scanner. Same discovery rules as Pi, same locations, same diagnostics. We only add the value layer (compact rules + token budget + per-agent subset).
 
 See `docs/design/request-flow.md` § Skill Registry.
 
-### S1-4 — `smart-zone.ts`
+### S1-4 — `smart-zone` ✅ DONE 2026-05-20
 
-**File**: `extensions/core/smart-zone.ts`
-**Hook**: `message`, `turn_end`
-**Estimated**: 1 day
-**Depends on**: nothing
+**Files**:
+- `extensions/core/smart-zone/types.ts` — `SmartZoneConfig`, `DEFAULT_SMART_ZONE_CONFIG`, `ZoneDecision`
+- `extensions/core/smart-zone/calc.ts` — pure: `decideAction`, `formatBar`, `formatTokens`, `formatStatusLine`
+- `extensions/core/smart-zone/index.ts` — Pi extension: `turn_end` hook + 2 commands
+- `extensions/core/smart-zone/calc.test.ts` — 19 pure-logic tests
 
-Reads session token count after each turn. Warns at 80K. Triggers auto-compact at 100K (after notifying user). Updates status bar with live token usage.
+**Hook**: `turn_end`
+**Status**: implemented, typechecked, 19/19 tests pass + 87 prior = 106/106 overall
+**Lines**: ~430 (types: 60, calc: 80, index: 190, tests: 100)
 
-Already drafted earlier in session. Will be cleaned up in this sprint.
+Reads `ctx.getContextUsage()` after each LLM turn. At 80K notifies user (with hysteresis: re-warn only every +5K to avoid spam). At 100K triggers `ctx.compact()` with custom instructions, prevents re-fire via `compactionInFlight` flag.
 
-### S1-5 — `neurox-tool.ts`
+Status bar shows live `tokens 45K/100K ████░░░░░░ 45%` updated every turn.
 
-**File**: `extensions/core/neurox-tool.ts`
-**Hook**: `pi.registerTool` x5 (recall, save, context, session_start, session_end)
-**Estimated**: 2 days
-**Depends on**: nothing
+Threshold is in **absolute tokens**, not percent of context window: a 200K window does NOT mean we can use 160K — the smart zone is 100K regardless. (Validated by Chroma research 2025: attention degrades quadratically beyond ~100K.)
 
-Wraps the existing `neurox` binary as Pi tools that the model can invoke directly. Replaces the MCP setup from skynex (more efficient, fewer tokens for tool definitions).
+**Decision during implementation**: hysteresis on warning step (default +5K) prevents notification spam. The model emits 5-10 tokens per turn end on incremental builds; without hysteresis the user would see the same warning every turn.
 
-### S1-6 — `production-gate.ts`
+See `docs/design/request-flow.md` § principles #1.
 
-**File**: `extensions/core/production-gate.ts`
-**Hook**: `tool_call` on `bash`, `write`, `edit`
-**Estimated**: 4 days
-**Depends on**: nothing (integrates with smart-zone for token-aware preview)
+### S1-5 — `neurox-tool` ✅ DONE 2026-05-20
 
-Pattern-matching gate that blocks production-affecting commands. Strict by default. Typed confirmation. Audit log. Configurable via `.skynex/production-gate.json`.
+**Files**:
+- `extensions/core/neurox-tool/types.ts` — config + 5 tool input shapes + `NeuroxCliResult`
+- `extensions/core/neurox-tool/cli.ts` — pure CLI arg builders + JSON parser
+- `extensions/core/neurox-tool/index.ts` — Pi extension: 5 tools + 1 command
+- `extensions/core/neurox-tool/cli.test.ts` — 18 pure tests
+
+**Hook**: `pi.registerTool` × 5
+**Status**: implemented, typechecked, 18/18 cli tests + 19 smart-zone + 34 skill-registry + 28 iron-law + 25 triage = 124/124 overall
+**Lines**: ~640 (types: 90, cli: 90, index: 330, tests: 130)
+
+Tools registered:
+- `neurox_recall(query, namespace?, limit?, kind?, type?, files?, include_stale?)` — search memory
+- `neurox_save(title, content, namespace?, type?, kind?, tags?, files?, topic_key?, confidence?, retention?)` — persist
+- `neurox_context(namespace?, limit?, files?)` — load relevant context
+- `neurox_session_start(title?, directory?, branch?, namespace?)` — begin session
+- `neurox_session_end(session_id, summary)` — close session
+
+Binary auto-detection: checks `~/.local/bin/neurox`, `/usr/local/bin/neurox`, `/opt/homebrew/bin/neurox`, `/usr/bin/neurox`, then falls back to `which neurox`. Configurable via `.skynex/neurox.json`.
+
+**Decision during implementation**: if the binary is not found, tools are STILL registered but `execute()` returns `isError: true`. Rationale: registering the tools lets the model see them in its capability list (so it doesn't waste tokens trying to fall back to other methods); the error response when called tells the model the issue directly.
+
+**Why wrap the CLI instead of using MCP**: the neurox MCP server burns ~200-400 tokens just in tool schema declarations per session. Wrapping the CLI as 5 Pi tools means the schema lives in our code (typebox), no MCP overhead, no separate process to manage.
+
+**Deferred to Sprint 2-3**: skill-resolution feedback loop integration (when a sub-agent returns `skill_resolution: fallback-registry`, auto-trigger `neurox_recall("skill-registry")`).
+
+See `docs/design/request-flow.md` § Skill Registry feedback loop.
+
+### S1-6 — `production-gate` ✅ DONE 2026-05-20
+
+**Files**:
+- `extensions/core/production-gate/types.ts` — config schema, pattern catalog, audit shapes
+- `extensions/core/production-gate/detector.ts` — pure pattern matching (uses minimatch for kubectl/branch globs)
+- `extensions/core/production-gate/audit.ts` — append-only JSONL log + rotation + auto-gitignore
+- `extensions/core/production-gate/index.ts` — Pi extension: tool_call hook + 7 commands
+- `extensions/core/production-gate/detector.test.ts` — 51 pattern tests
+
+**Hook**: `tool_call` on `bash`
+**Status**: implemented, typechecked, 51/51 detector tests pass. Sprint 1 total: 175/175.
+**Lines**: ~1100 (types: 170, detector: 320, audit: 100, index: 380, tests: 320)
+
+Pattern catalog (all enabled by default):
+- `kubectl` mutations (apply/delete/scale/rollout/drain/exec/edit/patch/replace) — always-allow verbs: get/describe/logs/top/diff
+- `db_migrations` (prisma/rails/alembic/knex/sqlx/flyway/drizzle/atlas)
+- `db_direct` SQL DELETE FROM/DROP TABLE/TRUNCATE/UPDATE without WHERE/FLUSHALL/deleteMany
+- `terraform` apply/destroy/import
+- `pulumi` up/destroy/refresh
+- `helm` upgrade/uninstall/rollback/install
+- `git_force` (--force / --force-with-lease / -f / -fu)
+- `git_main_push` to main/master/production/prod/release/* (with safe-branch exemption: personal/* feat/* fix/* chore/*)
+- `publishing` (npm/pnpm/yarn/cargo publish; twine upload)
+- `destructive_fs` (rm -rf /, sudo rm, chmod 777 /)
+- `cloud_delete` aws/gcloud/az + delete/remove/terminate/destroy
+- `container_destructive` (docker volume rm, docker system prune, kubectl delete pvc)
+- `service_control` (systemctl restart/stop, pm2 reload)
+- `custom_patterns` (team-defined regex via config)
+
+Modes:
+- `strict` (default) — block + require typed confirmation `"yes apply"`
+- `warn` — show warning, log, allow
+- `silent` — log only, no UI
+- `off` — disabled
+
+First-run UX: creates `.skynex/production-gate.json` (gitignored) + `.skynex/production-gate.example.json` (committable) + adds both `production-gate.json` and `audit.log` to `.gitignore`.
+
+Audit log JSONL append-only at `.skynex/audit.log`. Rotation at 50 MB. Entries include: timestamp, command, category, subtype, severity, context (kubectl context, git branch), confirmed/aborted, response, outcome, mode, session, duration_ms. Mode changes logged as separate entries.
+
+Commands:
+- `/production-gate:status` — mode + recent audit
+- `/production-gate:test "<cmd>"` — dry-run
+- `/production-gate:add-safe <name>` — add to safe_contexts (auto-detects branch vs kubectl by `*` or `/`)
+- `/production-gate:remove-safe <name>`
+- `/production-gate:audit [--category=X]` — query log
+- `/production-gate:mode <strict|warn|silent|off>` — change mode (logged)
+- `/production-gate:reload-config` — re-read config
+
+**Decisions during implementation**:
+1. JavaScript regex doesn't support `(?i)` inline flag → wrote `compileRegex()` that extracts POSIX-style `(?i)`/`(?im)` prefix to JS regex flags. This let us keep the user-facing config syntax POSIX-compatible.
+2. `db_direct` regex required SQL context (`DELETE FROM`, `DROP TABLE`, etc.) — initial broad `(DELETE|DROP)` matched `kubectl delete` command. Required SQL keyword + object-noun to be specific.
+3. Real kubectl context resolved via `kubectl config current-context` (best-effort, 2s timeout) when the command doesn't specify `--context=`.
+4. `auto-gitignore` runs every audit append (idempotent, cheap check) — guarantees the file never accidentally gets committed if user removed it from `.gitignore`.
 
 See `docs/design/production-gate.md` for full spec.
 

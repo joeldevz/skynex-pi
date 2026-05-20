@@ -5,14 +5,20 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "setup": "bash scripts/setup.sh"
+    "test": "tsx --test .pi/extensions/**/*.test.ts",
+    "test:triage": "tsx --test .pi/extensions/triage/rules.test.ts",
+    "doctor": "bash scripts/doctor.sh",
+    "start": "bash scripts/start.sh"
   },
   "dependencies": {
-    "@earendil-works/pi-coding-agent": "^0.75.3"
+    "@earendil-works/pi-coding-agent": "^0.75.3",
+    "minimatch": "^10.2.5",
+    "typebox": "^1.1.38"
   },
   "devDependencies": {
-    "typescript": "^5.4.0",
-    "@types/node": "^20.0.0"
+    "@types/node": "^20.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.4.0"
   },
   "engines": {
     "node": ">=20.0.0"
