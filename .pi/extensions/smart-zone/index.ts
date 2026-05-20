@@ -17,8 +17,9 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { decideAction, formatStatusLine, formatTokens, formatBar } from "./calc.js";
+import { decideAction, formatStatusLine, formatTokens, formatBar, buildCheckpointContent } from "./calc.js";
 import { DEFAULT_SMART_ZONE_CONFIG, type SmartZoneConfig } from "./types.js";
+import { getTriage } from "../triage/index.js";
 
 const CONFIG_PATH = ".skynex/smart-zone.json";
 const STATUS_KEY = "smart-zone";
@@ -97,14 +98,29 @@ export default function (pi: ExtensionAPI) {
         ctx.ui.notify(
           `⚠️  Smart Zone warning: ${formatTokens(usage.tokens)} tokens ` +
           `(${decision.percent_of_cap}% of ${formatTokens(config.hard_cap)} cap)\n` +
-          `   Consider /compact soon. Save key decisions to Neurox first.\n` +
-          `   Auto-compact will fire at ${formatTokens(config.hard_cap)}.`,
+          `   Consider /compact soon. Save key decisions to Neurox first. ` +
+          `If you're mid-workflow, note your current phase and step — ` +
+          `auto-compact at ${formatTokens(config.hard_cap)} will save a checkpoint to .skynex/workflow-checkpoint.md.`,
           "warning",
         );
       }
     } else if (decision.action === "compact") {
       state.compactionInFlight = true;
       sessionState.set(sid, state);
+
+      // Before auto-compact, save a workflow checkpoint
+      const sessionFile = ctx.sessionManager.getSessionFile();
+      const triage = getTriage(sessionFile);
+      const triageClassification = triage?.path;
+      const checkpointPath = path.join(ctx.cwd, ".skynex", "workflow-checkpoint.md");
+      const checkpoint = buildCheckpointContent(usage.tokens, sessionFile, triageClassification);
+
+      try {
+        fs.mkdirSync(path.dirname(checkpointPath), { recursive: true });
+        fs.writeFileSync(checkpointPath, checkpoint, "utf8");
+      } catch {
+        // Best-effort — don't block compact if write fails
+      }
 
       if (ctx.hasUI) {
         ctx.ui.notify(

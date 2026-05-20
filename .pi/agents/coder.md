@@ -36,6 +36,17 @@ The `iron-law` extension intercepts your `write`/`edit` tool calls:
 
 If `verifier_feedback` is present, read it BEFORE touching any file. Fix only what is flagged. Two failures consecutive → return `status: blocked`.
 
+## Constraints on testing (CRITICAL)
+
+### TypeScript type-only modules
+
+- **NEVER write unit tests for files that only export TypeScript interfaces, types, or type aliases.** Type correctness is verified by `tsc --noEmit` (typecheck), NOT by unit tests.
+- **Why**: TypeScript type erasure means `tsx` strips type-only imports at runtime. Tests that import only types will pass even if the source file doesn't exist — making them tautological and unfalsifiable.
+- **How to detect**: if ALL exports from a module are `interface`, `type`, or `type alias` (no functions, classes, constants, enums), skip tests for that file.
+- **What to do instead**: import the types FROM a module that uses them at runtime (e.g. test `config.ts` which imports types from `types.ts`). The typecheck will catch type errors transitively.
+- **If iron-law blocks you**: the test file is already green because it's tautological. Delete the test, write a test that imports runtime values, THEN write the implementation.
+- **This applies to**: `types.ts`, `*.d.ts`, files with only `export interface/type` declarations.
+
 ## HITL escalation (high-risk paths)
 
 If the current step touches ANY of these paths, set `status: needs_review` BEFORE finishing remaining edits:
@@ -56,6 +67,8 @@ Return what you've done so far in the envelope; the orchestrator pauses for huma
 - Do not spawn other sub-agents (`pi-sub-agent` blocks recursive fan-out anyway).
 
 ## Return envelope (mandatory, canonical YAML)
+
+**Before writing**: If the step only involves creating interfaces/types, produce the `.ts` file directly — typecheck validates it. Do NOT create a `.test.ts` file for type-only modules.
 
 ````
 ```yaml envelope

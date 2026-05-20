@@ -18,6 +18,7 @@ description: Substantial-path specification skill. Invokes product-planner + arc
 - ONLY if env var SKYNEX_HITL=strict is set: STOP after writing. Show the gate panel and wait for approve/dale/ok/sí/go (continue), edit "<note>" (revise), or cancel/no/stop (abort)
 - If SKYNEX_HITL=none: same as default (auto-continue)
 - When auto-continuing, surface a brief one-line notification: "📄 SPEC written: .skynex/<slug>/SPEC.md (N high/critical risks) → continuing to /skill:plan"
+- If ANY sub-agent envelope returns status=questions_pending or status=blocked, you MUST surface the questions to the user and STOP. Do NOT synthesize SPEC.md yourself using prior context. Do NOT assume earlier user answers cover the pending questions. Re-invoke the sub-agent with the user's new answers to get a status=ready envelope.
 
 ## How to invoke
 
@@ -89,9 +90,11 @@ If response ambiguous, ASK ONCE to clarify.
    - Full proposal.md content (verbatim)
    - Scout envelope (YAML, verbatim from discover)
 
-**c. Wait for BOTH envelopes.** If either has `status: blocked` or `status: questions_pending`, surface and STOP — do NOT proceed to merge.
-   - Collect all questions from both agents if present.
-   - Return to user with awaiting=clarification.
+**c. Wait for BOTH envelopes.**
+   - If BOTH status=ready → proceed to merge into SPEC.md
+   - If EITHER status=questions_pending → collect ALL pending questions from BOTH agents, surface to user, STOP. Do NOT write SPEC.md. Do NOT synthesize from your own knowledge.
+   - If EITHER status=blocked → surface blocker_reason, STOP.
+   - **There is no fourth option.** You must not proceed with any status other than ready.
 
 **d. Merge envelopes into SPEC.md** (template below).
    - Product-planner output → "## What & Why (Product)" section.
@@ -198,6 +201,18 @@ If response ambiguous, ASK ONCE to clarify.
 
 On approval, run `/skill:plan` to produce executable PLAN.md.
 ```
+
+## Anti-bypass rules
+
+These rules exist because LLMs sometimes "helpfully" bypass contracts when they think they have enough context. **Do NOT do this.**
+
+1. **NEVER write SPEC.md manually.** SPEC.md is ALWAYS synthesized from two sub-agent envelopes (product-planner + architect). If you write it from your own knowledge, the spec lacks the structured fields (acceptance_criteria, modules, risks) that downstream skills depend on.
+
+2. **NEVER assume prior user answers cover new questions.** If product-planner asks "which IdP?" and the user said "Okta" during discover, that answer was for scout — not for product-planner. The product-planner may be asking for a DIFFERENT level of detail. Surface the question.
+
+3. **NEVER proceed with status != ready.** The ONLY valid state for writing SPEC.md is: BOTH product-planner AND architect returned status=ready. Any other combination → STOP.
+
+4. **If you're tempted to "just write it yourself"** — that's the signal that something went wrong upstream. Surface the issue to the user instead.
 
 ## Output envelope
 

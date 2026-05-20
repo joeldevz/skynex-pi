@@ -186,7 +186,55 @@ export function triage(
   let path: TriagePath = "medium";
   let reason = "default: clear request affecting a single module";
 
-  // Rule 0: conversational — pure greeting / small talk, no technical intent
+  // Rule 0: gate response detection
+  // If the prompt matches a known gate-response keyword, return classification "gate_response"
+  // which tells buildWorkflowHint to NOT inject any hint (preserve current workflow state).
+  // Only detect UNAMBIGUOUS gate keywords (not "ok" or "y" which are conversational).
+  const GATE_RESPONSE_KEYWORDS = new Set([
+    // approval — unambiguous gate keywords
+    "approve",
+    "approved",
+    "dale",
+    "si",
+    "sí",
+    "proceed",
+    "continua",
+    "continúa",
+    "ejecuta",
+    "lgtm",
+    // cancel — unambiguous gate keywords
+    "cancel",
+    "stop",
+    "para",
+    "abortar",
+    "abort",
+    "salir",
+  ]);
+
+  // Check: is the entire prompt (trimmed, lowercased) a gate keyword?
+  // Also match: "edit <anything>" pattern
+  const trimmed = input.prompt.trim().toLowerCase();
+  if (
+    GATE_RESPONSE_KEYWORDS.has(trimmed) ||
+    trimmed.startsWith("edit ") ||
+    trimmed.startsWith('edit"')
+  ) {
+    path = "gate_response";
+    reason = "gate response: preserving current workflow state";
+    return {
+      path,
+      reason,
+      tdd: false,
+      should_load_neurox: false,
+      estimated_files: 0,
+      estimated_modules: 0,
+      has_risk_keywords: false,
+      signals: [`gate_response:${trimmed.slice(0, 30)}`],
+      ts: new Date().toISOString(),
+    };
+  }
+
+  // Rule 1: conversational — pure greeting / small talk, no technical intent
   // Triggers if: matches a conversational pattern AND no task signals AND no
   // file mentions AND no risk keywords AND prompt is short.
   if (
@@ -200,12 +248,12 @@ export function triage(
     path = "conversational";
     reason = `conversational / small talk: "${conversationalHits[0]}"`;
   }
-  // Rule 1: risk keywords → substantial
+  // Rule 2: risk keywords → substantial
   else if (riskHits.length > 0) {
     path = "substantial";
     reason = `risk keyword(s) detected: ${riskHits.slice(0, 3).join(", ")}`;
   }
-  // Rule 2: cross-cutting → substantial
+  // Rule 3: cross-cutting → substantial
   else if (crossCuttingHits.length > 0 || moduleHints.length >= 3) {
     path = "substantial";
     reason =
@@ -213,12 +261,12 @@ export function triage(
         ? `cross-cutting language: "${crossCuttingHits[0]}"`
         : `affects ${moduleHints.length} modules: ${moduleHints.slice(0, 3).join(", ")}`;
   }
-  // Rule 3: high ambiguity → substantial
+  // Rule 4: high ambiguity → substantial
   else if (ambiguityHits.length >= config.ambiguity_threshold) {
     path = "substantial";
     reason = `ambiguous request: ${ambiguityHits.length} vague terms (${ambiguityHits.slice(0, 3).join(", ")})`;
   }
-  // Rule 3.5: explicit TDD intent → medium (blocks any later small classification)
+  // Rule 4.5: explicit TDD intent → medium (blocks any later small classification)
   // Rationale: TDD requires red→green→refactor cycles, not a one-shot edit.
   // The user said "con tests TDD" or similar — they explicitly want the workflow.
   // Iron-law will also enforce test-first, but triage must inject the medium hint
@@ -228,12 +276,12 @@ export function triage(
     path = "medium";
     reason = `explicit TDD intent: "${tddHits[0]}"`;
   }
-  // Rule 4: trivial pattern → small (only if no risk/ambiguity/tdd already)
+  // Rule 5: trivial pattern → small (only if no risk/ambiguity/tdd already)
   else if (trivialHits.length > 0 && fileMentions.length <= 1) {
     path = "small";
     reason = `trivial mechanical change: "${trivialHits[0]}"`;
   }
-  // Rule 5: short prompt + concrete file mention → small
+  // Rule 6: short prompt + concrete file mention → small
   // Exception: if the task verb implies non-trivial work (create new module,
   // debug, refactor, investigate, etc.), stay in medium. Pure edit verbs
   // (fix, update, rename, remove, format) still allow small classification.
@@ -246,7 +294,7 @@ export function triage(
     path = "small";
     reason = `short concrete request on single file: ${fileMentions[0]}`;
   }
-  // Rule 6 (default): medium
+  // Rule 7 (default): medium
   // (a no-task short prompt with no file mention falls here intentionally:
   //  the user typed something we can't classify — better to plan than skip)
 

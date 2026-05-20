@@ -77,3 +77,40 @@ export function formatStatusLine(tokens: number, config: SmartZoneConfig): strin
   const bar = formatBar(pct, 10);
   return `tokens ${formatTokens(tokens)}/${formatTokens(config.hard_cap)} ${bar}`;
 }
+
+/**
+ * Build workflow checkpoint content to preserve state before auto-compact.
+ * @param tokenUsage current token count
+ * @param sessionFile path to the session file
+ * @param triageClassification triage classification (e.g. "medium", "substantial", or undefined)
+ * @returns checkpoint markdown content
+ */
+export function buildCheckpointContent(
+  tokenUsage: number,
+  sessionFile: string | undefined,
+  triageClassification: string | undefined,
+): string {
+  const classification = triageClassification ?? "unknown";
+  return [
+    `# Workflow Checkpoint (auto-saved by smart-zone at ${new Date().toISOString()})`,
+    ``,
+    `## Context`,
+    `- Token usage: ${formatTokens(tokenUsage)} / ${formatTokens(100_000)}`,
+    `- Session file: ${sessionFile ?? "(ephemeral)"}`,
+    ``,
+    `## IMPORTANT`,
+    `Auto-compact fired. You may have lost conversation context.`,
+    `Check these files to recover your workflow state:`,
+    `- .skynex/*/PLAN.md — current plan being executed`,
+    `- .skynex/*/proposal.md — proposal if in propose phase`,
+    `- .skynex/*/SPEC.md — spec if in specify phase`,
+    ``,
+    `## Recovery steps`,
+    `1. Read .skynex/ directory to find the active feature`,
+    `2. Read the PLAN.md to find which slice/step you were on`,
+    `3. Check git diff to see what files have been modified`,
+    `4. Continue from where you left off`,
+    ``,
+    `## Triage classification: ${classification}`,
+  ].join("\n");
+}

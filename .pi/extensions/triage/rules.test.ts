@@ -473,3 +473,56 @@ test("conversational hint: unchanged (no workflow phases)", () => {
   assert.doesNotMatch(hint, /\/skill:propose/);
   assert.doesNotMatch(hint, /\/skill:specify/);
 });
+
+// ─── GATE RESPONSE DETECTION ─────────────────────────────────────────────────
+
+test("gate response: 'dale' classifies as gate_response", () => {
+  const result = triage({ prompt: "dale", cwd: "/tmp" }, cfg);
+  assert.equal(result.path, "gate_response");
+});
+
+test("gate response: 'approve' classifies as gate_response", () => {
+  const result = triage({ prompt: "approve", cwd: "/tmp" }, cfg);
+  assert.equal(result.path, "gate_response");
+});
+
+test("gate response: 'cancel' classifies as gate_response", () => {
+  const result = triage({ prompt: "cancel", cwd: "/tmp" }, cfg);
+  assert.equal(result.path, "gate_response");
+});
+
+test("gate response: 'edit \"add OIDC\"' classifies as gate_response", () => {
+  const result = triage({ prompt: 'edit "add OIDC"', cwd: "/tmp" }, cfg);
+  assert.equal(result.path, "gate_response");
+});
+
+test("gate response: 'proceed' classifies as gate_response", () => {
+  const result = triage({ prompt: "proceed", cwd: "/tmp" }, cfg);
+  assert.equal(result.path, "gate_response");
+});
+
+test("gate response: 'sí' classifies as gate_response", () => {
+  const result = triage({ prompt: "sí", cwd: "/tmp" }, cfg);
+  assert.equal(result.path, "gate_response");
+});
+
+test("gate response: 'si' (no accent) classifies as gate_response", () => {
+  const result = triage({ prompt: "si", cwd: "/tmp" }, cfg);
+  assert.equal(result.path, "gate_response");
+});
+
+test("gate response: regular text is NOT gate_response", () => {
+  const result = triage({ prompt: "agrega función isValidEmail", cwd: "/tmp" }, cfg);
+  assert.notEqual(result.path, "gate_response");
+});
+
+test("gate response: 'ok' stays conversational (not gate_response)", () => {
+  const result = triage({ prompt: "ok", cwd: "/tmp" }, cfg);
+  assert.equal(result.path, "conversational");
+});
+
+test("gate response: buildWorkflowHint returns undefined for gate_response", () => {
+  const result = triage({ prompt: "dale", cwd: "/tmp" }, cfg);
+  const hint = buildWorkflowHint(result);
+  assert.equal(hint, undefined);
+});
