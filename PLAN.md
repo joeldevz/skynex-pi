@@ -94,14 +94,36 @@ Status command: `/iron-law:status` — shows files written this session + active
 
 See `docs/design/request-flow.md` § TDD Iron Law (L4).
 
-### S1-3 — `skill-registry.ts`
+### S1-3 — `skill-registry` ✅ DONE 2026-05-20
 
-**File**: `extensions/core/skill-registry.ts`
-**Hook**: `before_subagent_dispatch`, `resources_discover`
-**Estimated**: 3 days
-**Depends on**: nothing (but provides input to all phase extensions)
+**Files**:
+- `extensions/core/skill-registry/types.ts` — `SkillEntry`, `SkillRegistry`, `RegistryConfig` + defaults
+- `extensions/core/skill-registry/parser.ts` — pure: `extractCompactRules`, `estimateTokens`, `sha256`, `formatRulesForPrompt`
+- `extensions/core/skill-registry/registry.ts` — builder, cache, agent-map lookup (uses Pi's `loadSkills` + `parseFrontmatter`)
+- `extensions/core/skill-registry/index.ts` — Pi extension + 5 commands
+- `extensions/core/skill-registry/parser.test.ts` — 21 pure-parser tests
+- `extensions/core/skill-registry/registry.test.ts` — 13 integration tests with tmp dirs
 
-Scans `.pi/skills/` + global, extracts `## Compact Rules` per skill, caches by hash, injects per-agent subset into sub-agent prompts. Tracks usage metrics. Detects skill drift.
+**Hook**: `session_start`
+**Status**: implemented, typechecked, 34/34 tests pass + 53 prior = 87/87 overall
+**Lines**: ~830 (types: 90, parser: 130, registry: 175, index: 250, tests: 185)
+
+What it does:
+- Discovers all SKILL.md via Pi's `loadSkills` (`~/.pi/agent/skills/`, `~/.agents/skills/`, `.pi/skills/`, `.agents/skills/`)
+- For each: reads SKILL.md → `parseFrontmatter` → `extractCompactRules` from `## Compact Rules` section
+- Hashes each file (SHA-256), caches result in `.skynex/skill-registry.json`
+- On next session: validates cache by re-hashing source files → reuses if unchanged, rebuilds otherwise
+- Token-budget enforcement (default 1000 tokens/skill) with `exceedsBudget` flag + diagnostics
+- Per-agent subset assignment via `AGENT_SKILL_MAP` (orchestrator/coder/verifier/security/etc.)
+- Exports `getCurrentRegistry()`, `getSkillsForAgent(agent)`, `buildPromptInjection(agent)` for Sprint 2-3 phase extensions
+
+Commands: `/skills:list`, `/skills:refresh`, `/skills:audit`, `/skills:budget`, `/skills:show <name>`
+
+**Deferred to Sprint 2-3** (need sub-agent dispatch + return envelope):
+- Skill resolution feedback loop (auto-refresh on `skill_resolution: fallback-*`)
+- Per-skill usage metrics (count, last_used) → drift detector
+
+**Decision during implementation**: reuse Pi's `loadSkills` instead of writing our own scanner. Same discovery rules as Pi, same locations, same diagnostics. We only add the value layer (compact rules + token budget + per-agent subset).
 
 See `docs/design/request-flow.md` § Skill Registry.
 
