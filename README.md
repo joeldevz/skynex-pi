@@ -56,7 +56,7 @@ skynex-pi/
 │       └── status-bar.ts        # Live status (tokens, cost, model, phase)
 │
 ├── .pi/
-│   ├── agent/
+│   ├── agents/
 │   │   ├── AGENTS.md            # Project-wide context for all Pi agents
 │   │   └── settings.json        # Pi configuration (extensions, skills paths)
 │   ├── skills/                  # Skills migrated from skynex (same MD format)
