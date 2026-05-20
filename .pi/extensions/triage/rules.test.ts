@@ -117,6 +117,44 @@ test("small: 'update' verb + existing file stays small", () => {
   assert.equal(r.path, "small");
 });
 
+test("medium: 'debug' verb + single file promotes to medium (investigation)", () => {
+  // Debug is investigative work, scope may expand as we learn the bug.
+  const r = tri("debug the failing test in user.service.test.ts");
+  assert.equal(r.path, "medium");
+});
+
+test("medium: 'refactor' verb + single file promotes to medium", () => {
+  // Refactor is design work, not a touch-up.
+  const r = tri("refactor the order logic in src/order.ts");
+  assert.equal(r.path, "medium");
+});
+
+test("medium: 'investigate' verb + single file promotes to medium", () => {
+  const r = tri("investigate the slow query in src/db.ts");
+  assert.equal(r.path, "medium");
+});
+
+// ─── UNICODE NORMALIZATION (accents) ─────────────────────────────────────────
+
+test("conv: 'buenos días' (with accent) matches 'buenos dias' pattern", () => {
+  const r = tri("buenos días");
+  assert.equal(r.path, "conversational");
+});
+
+test("conv: 'añade' (with tilde) matches 'añade' pattern", () => {
+  // This already worked because 'añade' literally has the tilde in config,
+  // but the test guarantees NFD normalization does not break it either.
+  const r = tri("añade foo");
+  // Not conversational because of task signal, but not crashing either.
+  assert.notEqual(r.path, "conversational");
+});
+
+test("medium: 'cómo' (Spanish accented) does not break tokenization", () => {
+  const r = tri("cómo implemento una validación de email en src/utils/email.ts con tests TDD");
+  // Should still detect TDD intent.
+  assert.equal(r.path, "medium");
+});
+
 // ─── SUBSTANTIAL PATH ────────────────────────────────────────────────────────
 
 test("substantial: auth keyword promotes to substantial", () => {

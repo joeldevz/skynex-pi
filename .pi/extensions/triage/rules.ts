@@ -32,10 +32,16 @@ const MODULE_HINT_REGEX = /(?:^|\s)(?:src|app|lib|packages|services|modules)\/([
 
 /**
  * Tokenize the prompt to lowercase tokens for keyword matching.
- * Strips punctuation but preserves word boundaries.
+ * Strips punctuation, normalizes Unicode accents (NFD + diacritic strip) so
+ * "buenos días" matches the config pattern "buenos dias" without forcing the
+ * config to enumerate every accented variant.
  */
 function tokenize(prompt: string): string {
-  return prompt.toLowerCase().replace(/[^\w\s\-/.]/g, " ");
+  return prompt
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "") // strip combining diacritics
+    .toLowerCase()
+    .replace(/[^\w\s\-/.]/g, " ");
 }
 
 /**
@@ -70,15 +76,27 @@ function extractFileMentions(prompt: string): string[] {
 
 /**
  * Returns true if any of the matched task signals imply creating a NEW module
- * (vs editing an existing one). Used to upgrade "single-file mention" from
- * small to medium when the user is starting a new module.
+ * OR investigating a bug (vs a mechanical edit). Used to upgrade
+ * "single-file mention" from small to medium when the user is starting new
+ * work or diagnosing something.
  *
- * Heuristic: matches "create"/"crea"/"build"/"construye"/"add"/"agrega"/"write"/"escribe"
- * — these typically introduce new code surface. Editing verbs like "fix"/"arregla"
- * or "rename"/"renombra" stay small-eligible.
+ * Two categories of verbs trigger this:
+ *
+ * CREATE verbs — introduce new code surface, design thought needed:
+ *   create / crea / build / construye / add / agrega / añade / write /
+ *   escribe / implement / implementa
+ *
+ * INVESTIGATE verbs — diagnostic work that may touch multiple things or
+ * change scope as understanding deepens:
+ *   debug / depura / investigate / investiga / analyze / analiza /
+ *   refactor / refactoriza / explain / explica / design / diseña
+ *
+ * Pure EDIT verbs (fix, update, rename, remove, format) stay small-eligible
+ * because they are usually mechanical.
  */
-function hasCreateIntent(taskHits: readonly string[]): boolean {
-  const CREATE_VERBS = new Set([
+function hasNonTrivialIntent(taskHits: readonly string[]): boolean {
+  const NON_TRIVIAL_VERBS = new Set([
+    // create verbs
     "create",
     "crea",
     "crear",
@@ -96,8 +114,27 @@ function hasCreateIntent(taskHits: readonly string[]): boolean {
     "implement",
     "implementa",
     "implementar",
+    // investigate verbs
+    "debug",
+    "depura",
+    "depurar",
+    "investigate",
+    "investiga",
+    "investigar",
+    "analyze",
+    "analiza",
+    "analizar",
+    "refactor",
+    "refactoriza",
+    "refactorizar",
+    "explain",
+    "explica",
+    "explicar",
+    "design",
+    "diseña",
+    "diseñar",
   ]);
-  return taskHits.some((h) => CREATE_VERBS.has(h.toLowerCase()));
+  return taskHits.some((h) => NON_TRIVIAL_VERBS.has(h.toLowerCase()));
 }
 
 /**
@@ -197,15 +234,14 @@ export function triage(
     reason = `trivial mechanical change: "${trivialHits[0]}"`;
   }
   // Rule 5: short prompt + concrete file mention → small
-  // Exception: if the file mentioned does NOT yet exist (no extension hint we can
-  // verify here, but the prompt contains "create"/"crea"/"agrega" + a file path
-  // → that's new-module work, not a touch-up). We approximate this by checking
-  // for create-style task signals along with the file mention.
+  // Exception: if the task verb implies non-trivial work (create new module,
+  // debug, refactor, investigate, etc.), stay in medium. Pure edit verbs
+  // (fix, update, rename, remove, format) still allow small classification.
   else if (
     promptLength < PROMPT_LENGTH_SMALL &&
     fileMentions.length === 1 &&
     ambiguityHits.length === 0 &&
-    !hasCreateIntent(taskHits)
+    !hasNonTrivialIntent(taskHits)
   ) {
     path = "small";
     reason = `short concrete request on single file: ${fileMentions[0]}`;

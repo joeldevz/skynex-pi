@@ -12,6 +12,6 @@
     "declarationMap": true,
     "sourceMap": true
   },
-  "include": [".pi/extensions/**/*.ts"],
+  "include": [".pi/extensions/**/*.ts", "src/**/*.ts"],
   "exclude": ["node_modules", "dist"]
 }
