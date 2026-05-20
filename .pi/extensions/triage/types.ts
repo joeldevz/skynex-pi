@@ -3,7 +3,13 @@
  * Imported by index.ts (the Pi extension entry) and rules.ts (the matchers).
  */
 
-export type TriagePath = "small" | "medium" | "substantial";
+/**
+ * conversational — greeting, small talk, no technical task. Skips Neurox, skips planning.
+ * small  — trivial mechanical change in 1 file.
+ * medium — clear technical request, single module.
+ * substantial — ambiguous, cross-module, or risky.
+ */
+export type TriagePath = "conversational" | "small" | "medium" | "substantial";
 
 export interface TriageResult {
   /** The path the request is routed to. */
@@ -12,6 +18,11 @@ export interface TriageResult {
   reason: string;
   /** True if TDD discipline should be enforced for this request. */
   tdd: boolean;
+  /**
+   * Whether downstream agents should consult Neurox (recall/context) for this request.
+   * False for conversational, true for small+/risk_keywords.
+   */
+  should_load_neurox: boolean;
   /** Estimated number of files this request will touch (heuristic, not exact). */
   estimated_files: number;
   /** Estimated number of modules / top-level directories affected. */
@@ -44,6 +55,20 @@ export interface TriageConfig {
   ambiguity_terms: string[];
   /** Patterns that signal a trivial mechanical change. */
   trivial_patterns: string[];
+  /**
+   * Patterns that signal pure conversation / greeting / small talk.
+   * If matched AND no task signals, AND no risk/file mentions → conversational path.
+   */
+  conversational_patterns: string[];
+  /**
+   * Words that signal "user wants to do technical work or search memory".
+   * Their presence promotes from conversational to small/medium.
+   */
+  task_signals: string[];
+  /** Words that signal explicit memory/search intent (force should_load_neurox=true). */
+  search_intent: string[];
+  /** Maximum prompt length (chars) to still consider it conversational. */
+  conversational_max_chars: number;
   /** Minimum number of vague terms to consider request ambiguous. */
   ambiguity_threshold: number;
 }
@@ -129,5 +154,121 @@ export const DEFAULT_TRIAGE_CONFIG: TriageConfig = {
     "rename function",
     "change name",
   ],
+  conversational_patterns: [
+    "hola",
+    "hello",
+    "hi",
+    "hey",
+    "buenas",
+    "buenos dias",
+    "buenas tardes",
+    "buenas noches",
+    "que tal",
+    "como estas",
+    "como vas",
+    "gracias",
+    "thanks",
+    "ok",
+    "perfecto",
+    "genial",
+    "dale",
+    "adios",
+    "bye",
+    "chau",
+    "nos vemos",
+  ],
+  task_signals: [
+    "implement",
+    "implementa",
+    "implementar",
+    "create",
+    "crea",
+    "crear",
+    "build",
+    "construye",
+    "construir",
+    "fix",
+    "arregla",
+    "arreglar",
+    "refactor",
+    "refactoriza",
+    "refactorizar",
+    "add",
+    "agrega",
+    "agregar",
+    "añade",
+    "añadir",
+    "remove",
+    "elimina",
+    "eliminar",
+    "borra",
+    "borrar",
+    "rename",
+    "renombra",
+    "renombrar",
+    "deploy",
+    "despliega",
+    "desplegar",
+    "run",
+    "ejecuta",
+    "ejecutar",
+    "test",
+    "testea",
+    "testear",
+    "lint",
+    "review",
+    "revisa",
+    "revisar",
+    "explain",
+    "explica",
+    "explicar",
+    "show",
+    "muestra",
+    "mostrar",
+    "write",
+    "escribe",
+    "escribir",
+    "update",
+    "actualiza",
+    "actualizar",
+    "investigate",
+    "investiga",
+    "investigar",
+    "debug",
+    "depura",
+    "depurar",
+    "analyze",
+    "analiza",
+    "analizar",
+    "design",
+    "diseña",
+    "diseñar",
+    "migrate",
+    "migra",
+    "migrar",
+  ],
+  search_intent: [
+    "find",
+    "busca",
+    "buscar",
+    "encuentra",
+    "encontrar",
+    "search",
+    "recuerda",
+    "recordar",
+    "qué hicimos",
+    "que hicimos",
+    "what did we",
+    "history",
+    "historial",
+    "previous",
+    "anterior",
+    "remember",
+    "decisión",
+    "decision",
+    "patrón",
+    "pattern",
+  ],
+  conversational_max_chars: 60,
   ambiguity_threshold: 3,
 };

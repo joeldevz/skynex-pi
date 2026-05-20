@@ -40,13 +40,23 @@ function loadConfig(cwd: string): TriageConfig {
 }
 
 function formatNotification(result: TriageResult): string {
-  const icons = { small: "▪", medium: "◆", substantial: "★" } as const;
+  const icons = {
+    conversational: "💬",
+    small: "▪",
+    medium: "◆",
+    substantial: "★",
+  } as const;
+  // Quiet UX for small talk: no banner, no TDD line.
+  if (result.path === "conversational") {
+    return `💬 TRIAGE: conversational (skip Neurox, skip TDD)`;
+  }
   const lines = [
     `${icons[result.path]} TRIAGE: ${result.path.toUpperCase()}`,
     `   Reason: ${result.reason}`,
   ];
   if (result.has_risk_keywords) lines.push("   ⚠ Risk keywords detected — extra caution");
   if (result.tdd) lines.push("   ✓ TDD enforced (Iron Law L4 active)");
+  if (result.should_load_neurox) lines.push("   🧠 Neurox: consult prior context for this task");
   return lines.join("\n");
 }
 

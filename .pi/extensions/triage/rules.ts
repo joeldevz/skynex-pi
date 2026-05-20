@@ -6,12 +6,17 @@
  *
  * Rule order matters: first match wins.
  *
+ *   0. Conversational (greeting / small talk, no task signals) → conversational
  *   1. Risk keywords    → substantial
  *   2. Cross-cutting    → substantial
  *   3. High ambiguity   → substantial
  *   4. Trivial pattern  → small
  *   5. Short + concrete → small
  *   6. Default          → medium
+ *
+ * should_load_neurox: only true for substantial/medium/risk_keywords, OR if
+ * the user explicitly used search_intent words ("busca", "encuentra", etc.).
+ * Conversational and pure small never load Neurox.
  */
 
 import type {
@@ -87,6 +92,9 @@ export function triage(
   const crossCuttingHits = findMatches(haystack, config.cross_cutting_patterns);
   const ambiguityHits = findMatches(haystack, config.ambiguity_terms);
   const trivialHits = findMatches(haystack, config.trivial_patterns);
+  const conversationalHits = findMatches(haystack, config.conversational_patterns);
+  const taskHits = findMatches(haystack, config.task_signals);
+  const searchHits = findMatches(haystack, config.search_intent);
 
   const fileMentions = extractFileMentions(input.prompt);
   const moduleHints = extractModuleHints(input.prompt);
@@ -97,6 +105,9 @@ export function triage(
   if (crossCuttingHits.length > 0) signals.push(`cross_cutting:${crossCuttingHits.join(",")}`);
   if (ambiguityHits.length > 0) signals.push(`ambiguity_terms:${ambiguityHits.join(",")}`);
   if (trivialHits.length > 0) signals.push(`trivial_patterns:${trivialHits.join(",")}`);
+  if (conversationalHits.length > 0) signals.push(`conversational_patterns:${conversationalHits.join(",")}`);
+  if (taskHits.length > 0) signals.push(`task_signals:${taskHits.slice(0, 3).join(",")}`);
+  if (searchHits.length > 0) signals.push(`search_intent:${searchHits.slice(0, 3).join(",")}`);
   if (fileMentions.length > 0) signals.push(`file_mentions:${fileMentions.length}`);
   if (moduleHints.length > 0) signals.push(`module_hints:${moduleHints.length}`);
   signals.push(`prompt_length:${promptLength}`);
@@ -104,8 +115,22 @@ export function triage(
   let path: TriagePath = "medium";
   let reason = "default: clear request affecting a single module";
 
+  // Rule 0: conversational — pure greeting / small talk, no technical intent
+  // Triggers if: matches a conversational pattern AND no task signals AND no
+  // file mentions AND no risk keywords AND prompt is short.
+  if (
+    conversationalHits.length > 0 &&
+    taskHits.length === 0 &&
+    searchHits.length === 0 &&
+    fileMentions.length === 0 &&
+    riskHits.length === 0 &&
+    promptLength <= config.conversational_max_chars
+  ) {
+    path = "conversational";
+    reason = `conversational / small talk: "${conversationalHits[0]}"`;
+  }
   // Rule 1: risk keywords → substantial
-  if (riskHits.length > 0) {
+  else if (riskHits.length > 0) {
     path = "substantial";
     reason = `risk keyword(s) detected: ${riskHits.slice(0, 3).join(", ")}`;
   }
@@ -137,13 +162,33 @@ export function triage(
     reason = `short concrete request on single file: ${fileMentions[0]}`;
   }
   // Rule 6 (default): medium
+  // (a no-task short prompt with no file mention falls here intentionally:
+  //  the user typed something we can't classify — better to plan than skip)
+
+  // should_load_neurox decision:
+  //  - conversational → never
+  //  - explicit search_intent → always yes
+  //  - small/medium/substantial → yes
+  const should_load_neurox =
+    path !== "conversational" || searchHits.length > 0;
+
+  // tdd: only enforce when actually building code
+  const tdd =
+    path === "substantial" ||
+    path === "medium" ||
+    (path === "small" && riskHits.length > 0);
 
   return {
     path,
     reason,
-    tdd: path !== "small" || riskHits.length > 0,
-    estimated_files: Math.max(fileMentions.length, moduleHints.length, path === "small" ? 1 : 3),
-    estimated_modules: Math.max(moduleHints.length, 1),
+    tdd,
+    should_load_neurox,
+    estimated_files: Math.max(
+      fileMentions.length,
+      moduleHints.length,
+      path === "small" ? 1 : path === "conversational" ? 0 : 3,
+    ),
+    estimated_modules: Math.max(moduleHints.length, path === "conversational" ? 0 : 1),
     has_risk_keywords: riskHits.length > 0,
     signals,
     ts: new Date().toISOString(),

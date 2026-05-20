@@ -140,6 +140,80 @@ test("signals: prompt length always recorded", () => {
   assert.ok(r.signals.some((s) => s.startsWith("prompt_length:")));
 });
 
+// ─── CONVERSATIONAL PATH (greetings, small talk) ─────────────────────────────
+
+test("conv: 'hola' is conversational", () => {
+  const r = tri("hola");
+  assert.equal(r.path, "conversational");
+  assert.equal(r.tdd, false);
+  assert.equal(r.should_load_neurox, false);
+});
+
+test("conv: 'hello there' is conversational", () => {
+  const r = tri("hello there");
+  assert.equal(r.path, "conversational");
+});
+
+test("conv: 'gracias!' is conversational", () => {
+  const r = tri("gracias!");
+  assert.equal(r.path, "conversational");
+});
+
+test("conv: 'buenas tardes' is conversational", () => {
+  const r = tri("buenas tardes");
+  assert.equal(r.path, "conversational");
+});
+
+test("conv: 'ok' is conversational", () => {
+  const r = tri("ok");
+  assert.equal(r.path, "conversational");
+});
+
+test("conv: greeting + task word stays as task (not conversational)", () => {
+  const r = tri("hola, implementa el endpoint /users");
+  // task signals override conversational
+  assert.notEqual(r.path, "conversational");
+});
+
+test("conv: greeting + file mention stays as task", () => {
+  const r = tri("hola, mira src/auth/service.ts");
+  // auth is risk keyword → substantial
+  assert.equal(r.path, "substantial");
+});
+
+test("conv: long prompt without task signals still NOT conversational (no match)", () => {
+  // long greeting-like text but exceeds conversational_max_chars
+  const longGreeting = "hola hola hola hola hola hola hola hola hola hola hola hola hola hola";
+  const r = tri(longGreeting);
+  assert.notEqual(r.path, "conversational");
+});
+
+// ─── should_load_neurox flag ─────────────────────────────────────────────────
+
+test("neurox: should_load_neurox true for medium", () => {
+  const r = tri("add pagination to GET /orders");
+  assert.equal(r.should_load_neurox, true);
+});
+
+test("neurox: should_load_neurox true for substantial", () => {
+  const r = tri("rebuild auth with SAML");
+  assert.equal(r.should_load_neurox, true);
+});
+
+test("neurox: should_load_neurox false for conversational", () => {
+  const r = tri("hola");
+  assert.equal(r.should_load_neurox, false);
+});
+
+test("neurox: explicit search intent forces should_load_neurox=true even for short prompt", () => {
+  // "busca" should trigger search_intent. Note: "busca" alone (5 chars) is short
+  // but search_intent forces it out of conversational.
+  const r = tri("busca decisiones de arquitectura");
+  assert.equal(r.should_load_neurox, true);
+  // Should also exit conversational because search_intent matched
+  assert.notEqual(r.path, "conversational");
+});
+
 // ─── EDGE CASES ──────────────────────────────────────────────────────────────
 
 test("edge: empty prompt defaults to medium", () => {
@@ -176,6 +250,7 @@ test("structure: result has all required fields", () => {
   assert.ok(typeof r.path === "string");
   assert.ok(typeof r.reason === "string");
   assert.ok(typeof r.tdd === "boolean");
+  assert.ok(typeof r.should_load_neurox === "boolean");
   assert.ok(typeof r.estimated_files === "number");
   assert.ok(typeof r.estimated_modules === "number");
   assert.ok(typeof r.has_risk_keywords === "boolean");
