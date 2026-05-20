@@ -71,14 +71,30 @@ test("recall: query is last positional argument", () => {
 
 // ─── save ────────────────────────────────────────────────────────────────────
 
-test("save: required fields present", () => {
+test("save: required fields present (title as positional, NOT a flag)", () => {
   const args = buildSaveArgs({ title: "T", content: "C" }, NS);
-  assert.ok(args.includes("-title"));
-  assert.ok(args.includes("T"));
+  // neurox v0.5.4: there is NO -title flag. Title is the last positional arg.
+  assert.ok(!args.includes("-title"), "must NOT use -title flag");
   assert.ok(args.includes("-content"));
   assert.ok(args.includes("C"));
   assert.ok(args.includes("-namespace"));
   assert.ok(args.includes("skynex-pi"));
+  // Title is the very last argument
+  assert.equal(args[args.length - 1], "T", "title must be last positional argument");
+});
+
+test("save: title goes after all flags (Go flag parser stops at first non-flag)", () => {
+  const args = buildSaveArgs(
+    { title: "My Title", content: "body", tags: "a,b", confidence: 0.9 },
+    NS,
+  );
+  const titleIdx = args.indexOf("My Title");
+  // Every flag must appear before the title
+  for (const flag of ["-content", "-namespace", "-tags", "-confidence"]) {
+    const flagIdx = args.indexOf(flag);
+    assert.ok(flagIdx >= 0, `${flag} missing`);
+    assert.ok(flagIdx < titleIdx, `${flag} must come before title positional`);
+  }
 });
 
 test("save: all optional fields serialized", () => {

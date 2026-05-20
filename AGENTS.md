@@ -2,6 +2,17 @@
 
 You are working inside **skynex-pi**, a programmable multi-agent coding harness for an engineering team. Built on Pi.
 
+## Project structure (read this first)
+
+This repo is in **design + infrastructure phase**. All current TypeScript code lives in `.pi/extensions/` (Pi runtime extensions) and `.pi/agents/` (sub-agent definitions). There is intentionally **no `src/` directory** — it is gitignored to prevent E2E test residues from being tracked.
+
+When the user asks you to create code at `src/...`:
+  - Do NOT ask whether to update `package.json`/`tsconfig.json` — proceed and add the necessary glob entries (`src/**/*.ts`, `src/**/*.test.ts`). This is expected for the first `src/` file.
+  - Do NOT block on the absence of `src/` — create it. The gitignore rule only prevents accidental tracking; explicit `git add -f` works if needed for legitimate code.
+  - The iron-law extension will still enforce TDD (test-first) under `src/`.
+
+Sub-agents are **trusted, version-controlled** files under `.pi/agents/*.md`. When invoking the `subagent` tool, always pass `confirmProjectAgents: false` to skip the per-call confirmation dialog (only needed for unfamiliar repos).
+
 ## Core principles (non-negotiable)
 
 1. **Code enforces, prompts guide** — enforcement logic lives in TypeScript extensions, not in your instructions.
@@ -75,7 +86,47 @@ When the user asks for a production-affecting action (e.g. `kubectl apply`, `ter
 
 If the user manually configured the gate to mode `off` or `warn`, you'll see commands execute without a dialog — that's their explicit decision.
 
-## Skills available (load on-demand with `/skill:name`)
+## Workflow per triage path (MANDATORY)
+
+The triage extension classifies every request. **You MUST follow the workflow assigned to the detected path.** Do NOT improvise or skip phases just because a task looks small.
+
+### `conversational` — no workflow
+
+Respond briefly. Do NOT call any `neurox_*` tool, do NOT invoke any `/skill:*`.
+
+### `small` — direct execution, no skills
+
+Handle the change yourself with TDD if needed (the iron-law hook enforces it for production code). Do NOT invoke `/skill:discover` or any other phase skill for trivial mechanical changes.
+
+### `medium` — workflow RECOMMENDED with escape hatch
+
+1. **Invoke `/skill:discover` first** to gather context via the scout sub-agent (this also calls `neurox_recall` for prior decisions).
+2. After reading the scout's envelope:
+   - If scout returned **prior decisions relevant to this task** OR **open_questions** → continue to `/skill:plan`.
+   - If scout found **no relevant context** AND the task is **self-contained (≤2 files, no risk keywords)** → you MAY skip plan/validate and go directly to build with TDD.
+3. If you proceeded to plan → continue to `/skill:build` → `/skill:validate`.
+
+### `substantial` — workflow MANDATORY, no skips
+
+1. `/skill:discover` — REQUIRED
+2. `/skill:plan` — REQUIRED (HITL gate: present plan to user before proceeding)
+3. `/skill:build` — REQUIRED per slice
+4. `/skill:validate` — REQUIRED before completion
+
+**Never skip phases in substantial path.** Auth/payment/migration/security changes always go through the full workflow regardless of size.
+
+### The 4 phase skills
+
+| Phase | Skill | Sub-agent | Mode |
+|---|---|---|---|
+| 1 | `/skill:discover` | `scout` | single |
+| 2 | `/skill:plan` | `tech-planner` | single |
+| 3 | `/skill:build` | `coder` + `verifier` | chain (sequential) or parallel (independent slices) |
+| 4 | `/skill:validate` | `test-reviewer` + `security`×2 + `skill-validator` | parallel (4 at once) |
+
+Each skill emits a structured envelope. The next phase consumes that envelope. If any envelope has `status: blocked` or `status: questions_pending`, STOP and surface to the user.
+
+## Other skills (load on-demand with `/skill:name`)
 
 - `grill-me` — discovery questioning (one question at a time)
 - `tdd-discipline` — TDD workflow (red → green → refactor)

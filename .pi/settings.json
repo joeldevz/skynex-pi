@@ -3,5 +3,8 @@
   "skills": [
     "./.pi/skills"
   ],
-  "theme": "dark"
+  "theme": "dark",
+  "packages": [
+    "npm:pi-sub-agent"
+  ]
 }

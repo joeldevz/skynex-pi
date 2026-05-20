@@ -34,3 +34,15 @@ Thumbs.db
 *.log
 npm-debug.log*
 pnpm-debug.log*
+.skynex/skill-registry.json
+.skynex/audit.log
+
+# Test artifacts from Pi sessions — src/ is reserved for future code,
+# any *.ts file there during this design phase is a leftover from an E2E
+# test session. Remove this rule when the project has real src/ code.
+src/
+
+# Pi's local npm cache for packages installed via `pi install -l`.
+# The package names are tracked in .pi/settings.json under "packages",
+# this directory is just the npm install output (~100MB+, not versioned).
+.pi/npm/

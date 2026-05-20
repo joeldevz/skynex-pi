@@ -39,6 +39,52 @@ function loadConfig(cwd: string): TriageConfig {
   }
 }
 
+/**
+ * Build the system-prompt addendum that reminds the model which workflow path
+ * to follow. Without this, models tend to skip the discover→plan phases for
+ * mid-sized tasks (observed empirically in real sessions). The hint is
+ * idempotent — re-running triage just replaces the appended block.
+ */
+function buildWorkflowHint(result: TriageResult): string | undefined {
+  if (result.path === "conversational") {
+    return [
+      "## TRIAGE: conversational",
+      "Respond briefly. Do NOT call neurox_* tools. Do NOT invoke any /skill:* phase.",
+    ].join("\n");
+  }
+
+  if (result.path === "small") {
+    return [
+      "## TRIAGE: small",
+      "Handle this directly. TDD is enforced by the iron-law hook if you write to production code.",
+      "Do NOT invoke /skill:discover or any phase skill — small tasks bypass the workflow.",
+    ].join("\n");
+  }
+
+  if (result.path === "medium") {
+    return [
+      "## TRIAGE: medium",
+      "Follow the medium-path workflow:",
+      "  1. Invoke /skill:discover first (scout sub-agent + neurox_recall).",
+      "  2. If the scout envelope returns prior decisions or open_questions → continue to /skill:plan.",
+      "  3. Otherwise (no relevant context AND ≤2 files AND no risk keywords) → you MAY skip to direct TDD build.",
+      "  4. If you proceeded to plan → continue /skill:build → /skill:validate.",
+      "Do NOT skip /skill:discover without seeing the scout envelope first.",
+    ].join("\n");
+  }
+
+  // substantial
+  return [
+    "## TRIAGE: substantial (workflow MANDATORY, no skipping)",
+    "Risk keyword detected OR cross-module / ambiguous task. Required steps:",
+    "  1. /skill:discover  → scout exploration",
+    "  2. /skill:plan      → tech-planner produces PLAN.md (HITL gate before build)",
+    "  3. /skill:build     → coder + verifier per slice",
+    "  4. /skill:validate  → test-reviewer + security ×2 + skill-validator",
+    "NEVER write code before /skill:discover + /skill:plan return ready envelopes.",
+  ].join("\n");
+}
+
 function formatNotification(result: TriageResult): string {
   const icons = {
     conversational: "💬",
@@ -93,8 +139,16 @@ export default function (pi: ExtensionAPI) {
       ctx.ui.notify(formatNotification(result), "info");
     }
 
-    // No-op return: we do not modify the system prompt or inject a custom
-    // message. Phase extensions will read the triage state via getTriage() helper.
+    // Inject a phase-specific workflow hint into the system prompt.
+    // This is what makes the model actually follow the discover→plan→build→validate
+    // flow instead of jumping straight to coding (which we observed in real sessions).
+    const hint = buildWorkflowHint(result);
+    if (hint) {
+      return {
+        systemPrompt: `${event.systemPrompt}\n\n${hint}`,
+      };
+    }
+    return undefined;
   });
 
   pi.on("session_shutdown", async (_event, ctx) => {

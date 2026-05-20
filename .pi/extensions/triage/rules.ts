@@ -32,10 +32,16 @@ const MODULE_HINT_REGEX = /(?:^|\s)(?:src|app|lib|packages|services|modules)\/([
 
 /**
  * Tokenize the prompt to lowercase tokens for keyword matching.
- * Strips punctuation but preserves word boundaries.
+ * Strips punctuation, normalizes Unicode accents (NFD + diacritic strip) so
+ * "buenos días" matches the config pattern "buenos dias" without forcing the
+ * config to enumerate every accented variant.
  */
 function tokenize(prompt: string): string {
-  return prompt.toLowerCase().replace(/[^\w\s\-/.]/g, " ");
+  return prompt
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "") // strip combining diacritics
+    .toLowerCase()
+    .replace(/[^\w\s\-/.]/g, " ");
 }
 
 /**
@@ -69,6 +75,69 @@ function extractFileMentions(prompt: string): string[] {
 }
 
 /**
+ * Returns true if any of the matched task signals imply creating a NEW module
+ * OR investigating a bug (vs a mechanical edit). Used to upgrade
+ * "single-file mention" from small to medium when the user is starting new
+ * work or diagnosing something.
+ *
+ * Two categories of verbs trigger this:
+ *
+ * CREATE verbs — introduce new code surface, design thought needed:
+ *   create / crea / build / construye / add / agrega / añade / write /
+ *   escribe / implement / implementa
+ *
+ * INVESTIGATE verbs — diagnostic work that may touch multiple things or
+ * change scope as understanding deepens:
+ *   debug / depura / investigate / investiga / analyze / analiza /
+ *   refactor / refactoriza / explain / explica / design / diseña
+ *
+ * Pure EDIT verbs (fix, update, rename, remove, format) stay small-eligible
+ * because they are usually mechanical.
+ */
+function hasNonTrivialIntent(taskHits: readonly string[]): boolean {
+  const NON_TRIVIAL_VERBS = new Set([
+    // create verbs
+    "create",
+    "crea",
+    "crear",
+    "build",
+    "construye",
+    "construir",
+    "add",
+    "agrega",
+    "agregar",
+    "añade",
+    "añadir",
+    "write",
+    "escribe",
+    "escribir",
+    "implement",
+    "implementa",
+    "implementar",
+    // investigate verbs
+    "debug",
+    "depura",
+    "depurar",
+    "investigate",
+    "investiga",
+    "investigar",
+    "analyze",
+    "analiza",
+    "analizar",
+    "refactor",
+    "refactoriza",
+    "refactorizar",
+    "explain",
+    "explica",
+    "explicar",
+    "design",
+    "diseña",
+    "diseñar",
+  ]);
+  return taskHits.some((h) => NON_TRIVIAL_VERBS.has(h.toLowerCase()));
+}
+
+/**
  * Extract distinct module names from common path hints (src/X, app/X, etc.).
  */
 function extractModuleHints(prompt: string): string[] {
@@ -95,6 +164,7 @@ export function triage(
   const conversationalHits = findMatches(haystack, config.conversational_patterns);
   const taskHits = findMatches(haystack, config.task_signals);
   const searchHits = findMatches(haystack, config.search_intent);
+  const tddHits = findMatches(haystack, config.tdd_signals);
 
   const fileMentions = extractFileMentions(input.prompt);
   const moduleHints = extractModuleHints(input.prompt);
@@ -108,6 +178,7 @@ export function triage(
   if (conversationalHits.length > 0) signals.push(`conversational_patterns:${conversationalHits.join(",")}`);
   if (taskHits.length > 0) signals.push(`task_signals:${taskHits.slice(0, 3).join(",")}`);
   if (searchHits.length > 0) signals.push(`search_intent:${searchHits.slice(0, 3).join(",")}`);
+  if (tddHits.length > 0) signals.push(`tdd_signals:${tddHits.slice(0, 3).join(",")}`);
   if (fileMentions.length > 0) signals.push(`file_mentions:${fileMentions.length}`);
   if (moduleHints.length > 0) signals.push(`module_hints:${moduleHints.length}`);
   signals.push(`prompt_length:${promptLength}`);
@@ -147,16 +218,30 @@ export function triage(
     path = "substantial";
     reason = `ambiguous request: ${ambiguityHits.length} vague terms (${ambiguityHits.slice(0, 3).join(", ")})`;
   }
-  // Rule 4: trivial pattern → small (only if no risk/ambiguity already)
+  // Rule 3.5: explicit TDD intent → medium (blocks any later small classification)
+  // Rationale: TDD requires red→green→refactor cycles, not a one-shot edit.
+  // The user said "con tests TDD" or similar — they explicitly want the workflow.
+  // Iron-law will also enforce test-first, but triage must inject the medium hint
+  // so the model uses /skill:discover → /skill:build correctly instead of jumping
+  // straight to code.
+  else if (tddHits.length > 0) {
+    path = "medium";
+    reason = `explicit TDD intent: "${tddHits[0]}"`;
+  }
+  // Rule 4: trivial pattern → small (only if no risk/ambiguity/tdd already)
   else if (trivialHits.length > 0 && fileMentions.length <= 1) {
     path = "small";
     reason = `trivial mechanical change: "${trivialHits[0]}"`;
   }
   // Rule 5: short prompt + concrete file mention → small
+  // Exception: if the task verb implies non-trivial work (create new module,
+  // debug, refactor, investigate, etc.), stay in medium. Pure edit verbs
+  // (fix, update, rename, remove, format) still allow small classification.
   else if (
     promptLength < PROMPT_LENGTH_SMALL &&
     fileMentions.length === 1 &&
-    ambiguityHits.length === 0
+    ambiguityHits.length === 0 &&
+    !hasNonTrivialIntent(taskHits)
   ) {
     path = "small";
     reason = `short concrete request on single file: ${fileMentions[0]}`;

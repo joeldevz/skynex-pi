@@ -61,6 +61,100 @@ test("medium: default for unrecognized requests", () => {
   assert.equal(r.path, "medium");
 });
 
+// ─── TDD INTENT → MEDIUM (Rule 3.5) ──────────────────────────────────────────
+
+test("medium: explicit 'TDD' keyword promotes from small to medium", () => {
+  // Without 'TDD' this would match Rule 5 (short + single file) → small.
+  // With 'TDD' it must promote to medium.
+  const r = tri("add isValidEmail in src/utils/email.ts with TDD");
+  assert.equal(r.path, "medium");
+  assert.match(r.reason, /TDD intent/i);
+});
+
+test("medium: 'con tests' (Spanish) promotes to medium", () => {
+  const r = tri("agrega isValidEmail en src/utils/email.ts con tests");
+  assert.equal(r.path, "medium");
+});
+
+test("medium: 'with tests' promotes to medium", () => {
+  const r = tri("write a CSV parser in src/csv.ts with tests");
+  assert.equal(r.path, "medium");
+});
+
+test("medium: 'tests primero' (red-green) promotes to medium", () => {
+  const r = tri("create a parser, tests primero");
+  assert.equal(r.path, "medium");
+});
+
+test("tdd_signals: are recorded in signals list", () => {
+  const r = tri("add foo in src/x.ts with TDD");
+  const hit = r.signals.find((s) => s.startsWith("tdd_signals:"));
+  assert.ok(hit, `expected tdd_signals signal, got: ${r.signals.join(" | ")}`);
+});
+
+// ─── CREATE INTENT BLOCKS SMALL (Rule 5 exception) ───────────────────────────
+
+test("medium: 'create' verb + new file path is medium, NOT small", () => {
+  // Short prompt, single file, but the verb 'create' means new-module work.
+  const r = tri("create src/utils/email.ts");
+  assert.equal(r.path, "medium");
+});
+
+test("medium: 'agrega' verb + new file path is medium", () => {
+  const r = tri("agrega isValidEmail en src/utils/email.ts");
+  assert.equal(r.path, "medium");
+});
+
+test("small: 'fix' verb + existing file stays small", () => {
+  // 'fix' is editing intent, NOT create intent.
+  const r = tri("fix the import in src/index.ts");
+  assert.equal(r.path, "small");
+});
+
+test("small: 'update' verb + existing file stays small", () => {
+  // 'update' is editing intent, NOT create intent (regression guard).
+  const r = tri("update the import in src/index.ts");
+  assert.equal(r.path, "small");
+});
+
+test("medium: 'debug' verb + single file promotes to medium (investigation)", () => {
+  // Debug is investigative work, scope may expand as we learn the bug.
+  const r = tri("debug the failing test in user.service.test.ts");
+  assert.equal(r.path, "medium");
+});
+
+test("medium: 'refactor' verb + single file promotes to medium", () => {
+  // Refactor is design work, not a touch-up.
+  const r = tri("refactor the order logic in src/order.ts");
+  assert.equal(r.path, "medium");
+});
+
+test("medium: 'investigate' verb + single file promotes to medium", () => {
+  const r = tri("investigate the slow query in src/db.ts");
+  assert.equal(r.path, "medium");
+});
+
+// ─── UNICODE NORMALIZATION (accents) ─────────────────────────────────────────
+
+test("conv: 'buenos días' (with accent) matches 'buenos dias' pattern", () => {
+  const r = tri("buenos días");
+  assert.equal(r.path, "conversational");
+});
+
+test("conv: 'añade' (with tilde) matches 'añade' pattern", () => {
+  // This already worked because 'añade' literally has the tilde in config,
+  // but the test guarantees NFD normalization does not break it either.
+  const r = tri("añade foo");
+  // Not conversational because of task signal, but not crashing either.
+  assert.notEqual(r.path, "conversational");
+});
+
+test("medium: 'cómo' (Spanish accented) does not break tokenization", () => {
+  const r = tri("cómo implemento una validación de email en src/utils/email.ts con tests TDD");
+  // Should still detect TDD intent.
+  assert.equal(r.path, "medium");
+});
+
 // ─── SUBSTANTIAL PATH ────────────────────────────────────────────────────────
 
 test("substantial: auth keyword promotes to substantial", () => {

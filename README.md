@@ -7,7 +7,7 @@
 
 ## What this is
 
-skynex-pi is the second-generation of skynex, built on [Pi](https://pi.dev) instead of OpenCode. The change of harness is deliberate: Pi exposes TypeScript hooks that let us enforce discipline in **code** instead of asking models to follow **prompts**.
+skynex-pi is the second generation of skynex, built on [Pi](https://pi.dev) instead of OpenCode. The change of harness is deliberate: Pi exposes TypeScript hooks that let us enforce discipline in **code** instead of asking models to follow **prompts**.
 
 This repo will eventually contain:
 - ~6 core infrastructure extensions (TypeScript)
@@ -56,7 +56,7 @@ skynex-pi/
 │       └── status-bar.ts        # Live status (tokens, cost, model, phase)
 │
 ├── .pi/
-│   ├── agent/
+│   ├── agents/
 │   │   ├── AGENTS.md            # Project-wide context for all Pi agents
 │   │   └── settings.json        # Pi configuration (extensions, skills paths)
 │   ├── skills/                  # Skills migrated from skynex (same MD format)

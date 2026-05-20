@@ -67,6 +67,14 @@ export interface TriageConfig {
   task_signals: string[];
   /** Words that signal explicit memory/search intent (force should_load_neurox=true). */
   search_intent: string[];
+  /**
+   * Patterns that signal the user explicitly wants TDD (test-driven development).
+   * When present, the triage path is promoted from `small` to `medium` because
+   * TDD requires red→green→refactor cycles, not a one-shot edit. The iron-law
+   * hook will also fire, but triage needs to inject the medium-path workflow
+   * hint so the model uses /skill:discover → /skill:build correctly.
+   */
+  tdd_signals: string[];
   /** Maximum prompt length (chars) to still consider it conversational. */
   conversational_max_chars: number;
   /** Minimum number of vague terms to consider request ambiguous. */
@@ -268,6 +276,26 @@ export const DEFAULT_TRIAGE_CONFIG: TriageConfig = {
     "decision",
     "patrón",
     "pattern",
+  ],
+  tdd_signals: [
+    "tdd",
+    "test-driven",
+    "test driven",
+    "con tests",
+    "with tests",
+    "with test",
+    "con test",
+    "incluye tests",
+    "incluye test",
+    "incluyendo tests",
+    "including tests",
+    "y tests",
+    "and tests",
+    "tests primero",
+    "tests first",
+    "test first",
+    "red green refactor",
+    "red-green-refactor",
   ],
   conversational_max_chars: 60,
   ambiguity_threshold: 3,
