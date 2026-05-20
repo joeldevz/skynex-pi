@@ -45,7 +45,7 @@ function loadConfig(cwd: string): TriageConfig {
  * mid-sized tasks (observed empirically in real sessions). The hint is
  * idempotent — re-running triage just replaces the appended block.
  */
-function buildWorkflowHint(result: TriageResult): string | undefined {
+export function buildWorkflowHint(result: TriageResult): string | undefined {
   if (result.path === "conversational") {
     return [
       "## TRIAGE: conversational",
@@ -75,13 +75,18 @@ function buildWorkflowHint(result: TriageResult): string | undefined {
 
   // substantial
   return [
-    "## TRIAGE: substantial (workflow MANDATORY, no skipping)",
+    "## TRIAGE: substantial (workflow MANDATORY, no skipping, HITL gates enforced)",
     "Risk keyword detected OR cross-module / ambiguous task. Required steps:",
-    "  1. /skill:discover  → scout exploration",
-    "  2. /skill:plan      → tech-planner produces PLAN.md (HITL gate before build)",
-    "  3. /skill:build     → coder + verifier per slice",
-    "  4. /skill:validate  → test-reviewer + security ×2 + skill-validator",
-    "NEVER write code before /skill:discover + /skill:plan return ready envelopes.",
+    "  1. /skill:discover  → scout exploration (read scout envelope before proceeding)",
+    "  2. /skill:propose   → product-planner writes 1-page proposal.md → STOP for user approval",
+    "  3. /skill:specify   → product-planner + architect IN PARALLEL → SPEC.md → STOP for user approval",
+    "  4. /skill:plan      → tech-planner reads SPEC.md → PLAN.md (slice gate STOPS if slices_count > 3)",
+    "  5. /skill:build     → coder + verifier per slice (chain or parallel for disjoint slices)",
+    "  6. /skill:validate  → test-reviewer + security ×2 + skill-validator (parallel)",
+    "HITL gates at steps 2, 3, and 4 (when slices_count > 3) are MANDATORY — wait for explicit `approve` / `edit` / `cancel`.",
+    "After /skill:validate APPROVED, the archive extension auto-runs archivist on session_shutdown.",
+    "NEVER write code before steps 1-4 are all approved.",
+    "NEVER skip /skill:propose even if the approach seems obvious — it's the early HITL gate.",
   ].join("\n");
 }
 

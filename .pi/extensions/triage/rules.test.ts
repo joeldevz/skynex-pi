@@ -12,6 +12,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { triage } from "./rules.js";
 import { DEFAULT_TRIAGE_CONFIG } from "./types.js";
+import { buildWorkflowHint } from "./index.js";
 
 const cfg = DEFAULT_TRIAGE_CONFIG;
 
@@ -352,4 +353,64 @@ test("structure: result has all required fields", () => {
   assert.ok(typeof r.ts === "string");
   // ts must be ISO 8601
   assert.ok(!isNaN(Date.parse(r.ts)));
+});
+
+// ─── WORKFLOW HINT TESTS (Sprint 3 substantial path) ─────────────────────────
+
+test("substantial hint: includes /skill:propose", () => {
+  const r = tri("rebuild auth to support SAML SSO");
+  const hint = buildWorkflowHint(r);
+  assert.ok(hint);
+  assert.match(hint, /\/skill:propose/);
+});
+
+test("substantial hint: includes /skill:specify", () => {
+  const r = tri("rebuild auth to support SAML SSO");
+  const hint = buildWorkflowHint(r);
+  assert.ok(hint);
+  assert.match(hint, /\/skill:specify/);
+});
+
+test("substantial hint: mentions HITL gates at steps 2, 3, 4", () => {
+  const r = tri("rebuild auth to support SAML SSO");
+  const hint = buildWorkflowHint(r);
+  assert.ok(hint);
+  assert.match(hint, /HITL gates/);
+  assert.match(hint, /steps 2, 3, and 4/);
+  assert.match(hint, /MANDATORY/);
+});
+
+test("substantial hint: mentions archive extension and archivist", () => {
+  const r = tri("rebuild auth to support SAML SSO");
+  const hint = buildWorkflowHint(r);
+  assert.ok(hint);
+  assert.match(hint, /archive extension/);
+  assert.match(hint, /archivist/);
+});
+
+test("medium hint: unchanged (no /skill:propose or /skill:specify)", () => {
+  const r = tri("add pagination to GET /orders");
+  const hint = buildWorkflowHint(r);
+  assert.ok(hint);
+  assert.match(hint, /medium-path/);
+  assert.doesNotMatch(hint, /\/skill:propose/);
+  assert.doesNotMatch(hint, /\/skill:specify/);
+});
+
+test("small hint: unchanged (no new propose/specify mentioned)", () => {
+  const r = tri("fix typo in README.md");
+  const hint = buildWorkflowHint(r);
+  assert.ok(hint);
+  assert.match(hint, /TRIAGE: small/);
+  assert.doesNotMatch(hint, /\/skill:propose/);
+  assert.doesNotMatch(hint, /\/skill:specify/);
+});
+
+test("conversational hint: unchanged (no workflow phases)", () => {
+  const r = tri("hola");
+  const hint = buildWorkflowHint(r);
+  assert.ok(hint);
+  assert.match(hint, /conversational/);
+  assert.doesNotMatch(hint, /\/skill:propose/);
+  assert.doesNotMatch(hint, /\/skill:specify/);
 });
