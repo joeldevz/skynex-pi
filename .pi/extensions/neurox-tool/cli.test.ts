@@ -19,15 +19,22 @@ const NS = "skynex-pi";
 
 // ─── recall ──────────────────────────────────────────────────────────────────
 
-test("recall: minimal query uses default namespace", () => {
+test("recall: minimal query OMITS namespace (cross-project search)", () => {
   const args = buildRecallArgs({ query: "find this" }, NS);
-  assert.deepEqual(args, ["recall", "-namespace", "skynex-pi", "find this"]);
+  assert.deepEqual(args, ["recall", "find this"]);
+  assert.ok(!args.includes("-namespace"));
 });
 
-test("recall: override namespace", () => {
+test("recall: namespace included only when explicitly provided", () => {
   const args = buildRecallArgs({ query: "x", namespace: "other" }, NS);
   assert.ok(args.includes("-namespace"));
   assert.ok(args.includes("other"));
+});
+
+test("recall: default_namespace param is IGNORED for recall (cross-search default)", () => {
+  // Even if default_namespace='skynex-pi', recall doesn't auto-apply it
+  const args = buildRecallArgs({ query: "x" }, "skynex-pi");
+  assert.ok(!args.includes("-namespace"));
   assert.ok(!args.includes("skynex-pi"));
 });
 

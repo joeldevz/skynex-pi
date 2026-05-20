@@ -136,6 +136,55 @@ function formatToolResult(result: NeuroxCliResult, label: string) {
   };
 }
 
+/**
+ * Build a "retry hint" message for the model when neurox_recall returns 0 results.
+ * Tells the model how to retry with variations BEFORE concluding nothing exists.
+ */
+function buildRecallHint(query: string, namespaceUsed: string | undefined): string {
+  return [
+    "",
+    "──────────────────────────────────────────────────────────────",
+    "ZERO RESULTS — do NOT conclude 'nothing found' yet.",
+    "",
+    `Query attempted: "${query}"`,
+    `Namespace used:  ${namespaceUsed ?? "(cross-namespace search)"}`,
+    "",
+    "Required next steps (per AGENTS.md search protocol):",
+    "  1. If you searched with a namespace, RETRY without namespace (cross-project).",
+    "  2. Try 2-3 SYNONYMS or related terms:",
+    "     • auth → authentication, login, jwt, session, token",
+    "     • payment → billing, checkout, invoice, subscription",
+    "     • bug → fix, error, issue, regression",
+    "     • api → endpoint, route, handler, controller",
+    "  3. Only after 2-3 distinct queries return zero may you report",
+    "     'no memories found' to the user. Tell them which queries you tried.",
+    "──────────────────────────────────────────────────────────────",
+  ].join("\n");
+}
+
+/**
+ * Wrap recall result with retry hint when count is 0.
+ */
+function formatRecallResult(result: NeuroxCliResult, query: string, namespaceUsed: string | undefined) {
+  const base = formatToolResult(result, "neurox_recall");
+  if (!result.ok || base.isError) return base;
+
+  const data = result.data;
+  const count =
+    data && typeof data === "object" && "count" in data
+      ? (data as { count?: number }).count ?? 0
+      : 0;
+
+  if (count === 0) {
+    const baseText = base.content[0].type === "text" ? base.content[0].text : "";
+    return {
+      ...base,
+      content: [{ type: "text" as const, text: baseText + buildRecallHint(query, namespaceUsed) }],
+    };
+  }
+  return base;
+}
+
 export default function (pi: ExtensionAPI) {
   // Detect binary at module load. If unavailable, log and skip registration.
   let binary: string | undefined;
@@ -168,10 +217,10 @@ export default function (pi: ExtensionAPI) {
     name: "neurox_recall",
     label: "Neurox: Recall",
     description:
-      "Search durable memory for past decisions, patterns, and discoveries. Use BEFORE doing non-trivial work to check what is already known. Cross-namespace search (omit `namespace`) finds knowledge across all projects.",
+      "Search durable memory for past decisions, patterns, and discoveries. PROTOCOL: (1) ALWAYS try cross-project first (OMIT namespace). (2) If 0 results, RETRY with synonyms (auth→authentication/login/jwt/session/token). (3) Only after 2-3 distinct queries return zero, report 'not found'. NEVER give up after one search.",
     parameters: Type.Object({
       query: Type.String({ description: "Keywords to search for" }),
-      namespace: Type.Optional(Type.String({ description: "Filter by namespace (omit for cross-namespace)" })),
+      namespace: Type.Optional(Type.String({ description: "Filter by namespace. OMIT for cross-project search (recommended first attempt)." })),
       limit: Type.Optional(Type.Number({ description: "Max results (default 10)" })),
       kind: Type.Optional(Type.Union([
         Type.Literal("episodic"),
@@ -198,9 +247,10 @@ export default function (pi: ExtensionAPI) {
           isError: true,
         };
       }
-      const args = buildRecallArgs(params as RecallInput, activeConfig.default_namespace);
+      const input = params as RecallInput;
+      const args = buildRecallArgs(input, activeConfig.default_namespace);
       const result = runNeurox(binary, args, activeConfig);
-      return formatToolResult(result, "neurox_recall");
+      return formatRecallResult(result, input.query, input.namespace);
     },
   });
 

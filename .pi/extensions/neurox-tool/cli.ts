@@ -25,9 +25,14 @@ function pushFlag(args: string[], flag: string, value: string | number | boolean
 /**
  * Build CLI args for `neurox recall <query>`. Query is the LAST positional arg.
  */
-export function buildRecallArgs(input: RecallInput, defaultNamespace: string): string[] {
+export function buildRecallArgs(input: RecallInput, _defaultNamespace: string): string[] {
   const args: string[] = ["recall"];
-  pushFlag(args, "-namespace", input.namespace ?? defaultNamespace);
+  // CROSS-NAMESPACE BY DEFAULT for recall: only pass -namespace if user
+  // explicitly provided one. Recall is meant to surface knowledge across
+  // projects unless the user opts into a single namespace filter.
+  if (input.namespace) {
+    pushFlag(args, "-namespace", input.namespace);
+  }
   pushFlag(args, "-limit", input.limit);
   pushFlag(args, "-kind", input.kind);
   pushFlag(args, "-type", input.type);

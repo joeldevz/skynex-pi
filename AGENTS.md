@@ -23,6 +23,37 @@ The Triage extension classifies every user message into one of four paths:
 
 **Do NOT call `neurox_session_start` on every prompt.** Call it only once at the beginning of a real work session, not for "hola" or "gracias".
 
+## How to search Neurox effectively (mandatory protocol)
+
+Neurox stores observations across MANY projects in different namespaces (e.g. `default`, `clasing-api`, `skynex`, etc.). The current project is `skynex-pi` but the user often has relevant knowledge in other projects.
+
+**Search protocol — follow in order, do NOT skip steps:**
+
+1. **Cross-project search first (no namespace filter)** — gives the broadest results:
+   ```
+   neurox_recall(query: "auth decisions login")
+   ```
+   Most user knowledge lives in `default` or older project namespaces.
+
+2. **If step 1 returns 0 OR few relevant results, try synonyms / variations** — at least 2-3 attempts:
+   - User asked about `auth` → also try `authentication`, `login`, `jwt`, `session`, `token`
+   - User asked about `payment` → also try `billing`, `checkout`, `invoice`, `subscription`
+   - User asked about `bug` → also try `fix`, `error`, `issue`, `regression`
+   Show variations to the user so they see what you tried.
+
+3. **Project-namespace search** — only if you specifically need recent project-local decisions:
+   ```
+   neurox_recall(query: "...", namespace: "skynex-pi")
+   ```
+
+4. **If after 2-3 search variations you STILL have 0 results**, report exactly:
+   - What queries you tried
+   - Suggest the user phrase the question differently OR confirm the topic was never saved.
+
+**Never report "no memories found" after a single search attempt.** That is a failure of your search strategy, not a Neurox limitation.
+
+**When presenting results**, tell the user which namespace they came from (`default`, `clasing-api`, etc.) and link back with the observation `id`.
+
 ## Extensions active in this project
 
 - `triage` — classifies your incoming request (conversational/small/medium/substantial). Use `/triage:status` to see the last decision.
