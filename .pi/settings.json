@@ -1,0 +1,15 @@
+{
+  "_comment": "Pi auto-discovers .pi/extensions/*/index.ts. We use extensions/ as our source layout and explicitly point Pi at each Sprint 1 extension directory.",
+  "extensions": [
+    "./extensions/core/triage",
+    "./extensions/core/iron-law",
+    "./extensions/core/skill-registry",
+    "./extensions/core/smart-zone",
+    "./extensions/core/neurox-tool",
+    "./extensions/core/production-gate"
+  ],
+  "skills": [
+    "./.pi/skills"
+  ],
+  "theme": "dark"
+}
