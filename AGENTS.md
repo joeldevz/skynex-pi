@@ -63,6 +63,18 @@ Neurox stores observations across MANY projects in different namespaces (e.g. `d
 - `neurox-tool` — gives you `neurox_recall`, `neurox_save`, `neurox_context`, `neurox_session_start`, `neurox_session_end`.
 - `production-gate` — blocks production-affecting commands (`kubectl apply`, `terraform apply`, `git push --force`, `npm publish`, `rm -rf /`, etc.) and requires typed confirmation.
 
+## How to interact with the production-gate (important)
+
+The `production-gate` extension is a `tool_call` hook. It intercepts dangerous commands at the moment you invoke `bash`. **The user already trusts this layer** — your job is NOT to pre-block production commands in your text response.
+
+When the user asks for a production-affecting action (e.g. `kubectl apply`, `terraform apply`, `npm publish`):
+
+- ✅ **DO**: call the `bash` tool with the actual command. The production-gate will intercept, show the user an arrow-key dialog (approve / cancel / show details), and either block or let it through. The user sees the dialog and decides.
+- ❌ **DO NOT**: refuse to call the tool and reply with a text envelope asking for typed confirmation. That defeats the gate's UX (the dialog is much better than typed text). The gate is the source of truth, not your prompt.
+- ⚠️ Exception: if the user's request is ambiguous (e.g. "deploy this" without specifying what), ask the clarifying question FIRST, then call the tool.
+
+If the user manually configured the gate to mode `off` or `warn`, you'll see commands execute without a dialog — that's their explicit decision.
+
 ## Skills available (load on-demand with `/skill:name`)
 
 - `grill-me` — discovery questioning (one question at a time)

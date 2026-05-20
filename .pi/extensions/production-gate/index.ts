@@ -248,35 +248,50 @@ export default function (pi: ExtensionAPI) {
       };
     }
 
-    const dialog = renderDialog(cmd, match, cachedConfig);
+    // STRICT mode UX:
+    //   1. ctx.ui.notify shows the full risk context (one warning blob)
+    //   2. ctx.ui.select shows a short title + arrow-key options
+    //   3. Map the choice back to confirmed/aborted
+    const detailedReport = renderDialog(cmd, match, cachedConfig);
+    ctx.ui.notify(detailedReport, "warning");
+
+    const APPROVE = `✓ Aprobar y ejecutar (${cachedConfig.confirmation.typed_phrase})`;
+    const ABORT = "✗ Cancelar (no ejecutar)";
+    const SHOW_MORE = `🔎 Ver detalle completo del comando`;
+
     const startedAt = Date.now();
     let confirmed = false;
     let responseText = "";
 
-    if (cachedConfig.confirmation.require_typed) {
-      // Use select with the typed phrase and an abort option
-      const choices = [cachedConfig.confirmation.typed_phrase, "abort"];
-      const choice = await ctx.ui.select(dialog, choices);
+    // Loop: user can pick SHOW_MORE to re-read details, then re-prompt
+    while (true) {
+      const choice = await ctx.ui.select(
+        `🔴 PRODUCTION GATE — ${match.category} (${match.severity})`,
+        [APPROVE, ABORT, SHOW_MORE],
+      );
+      if (choice === SHOW_MORE) {
+        ctx.ui.notify(`Comando completo:\n${cmd}`, "info");
+        continue;
+      }
       responseText = choice ?? "abort";
-      confirmed = responseText === cachedConfig.confirmation.typed_phrase;
-    } else {
-      const ok = await ctx.ui.confirm("Production Gate", dialog);
-      confirmed = ok === true;
-      responseText = confirmed ? "yes" : "no";
+      confirmed = choice === APPROVE;
+      break;
     }
 
     const duration_ms = Date.now() - startedAt;
     appendAuditEntry(ctx.cwd, cachedConfig.audit_log, {
       ...baseAudit,
       confirmed,
-      response: responseText,
+      response: confirmed ? "approve" : "abort",
       outcome: confirmed ? "user-allowed" : "user-aborted",
       duration_ms,
     });
 
     if (!confirmed) {
+      ctx.ui.notify(`✗ Comando bloqueado (${match.category})`, "info");
       return { block: true, reason: `Aborted at production gate (${match.category})` };
     }
+    ctx.ui.notify(`✓ Comando aprobado — ejecutando ahora`, "info");
     return undefined;
   });
 
