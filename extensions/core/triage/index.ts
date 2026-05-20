@@ -1,0 +1,165 @@
+/**
+ * Triage extension — routes user requests to small/medium/substantial path.
+ *
+ * Hook: `before_agent_start`
+ * Side effects:
+ *   - Notifies user with a one-line summary of the routing decision
+ *   - Stores result in session state for downstream extensions to read
+ *
+ * Reads optional config from `.skynex/triage.json`. Falls back to defaults if missing.
+ *
+ * NOTE: This extension does NOT modify the agent loop directly. Phase extensions
+ * (discover, plan, etc. in Sprint 2-3) read `session.triage` to decide what to do.
+ * Until those exist, this extension only adds an informational notification.
+ */
+
+import * as fs from "node:fs";
+import * as path from "node:path";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { triage } from "./rules.js";
+import {
+  DEFAULT_TRIAGE_CONFIG,
+  type TriageConfig,
+  type TriageResult,
+} from "./types.js";
+
+const CONFIG_PATH = ".skynex/triage.json";
+const STATE_KEY = "skynex.triage";
+
+function loadConfig(cwd: string): TriageConfig {
+  const full = path.join(cwd, CONFIG_PATH);
+  if (!fs.existsSync(full)) return DEFAULT_TRIAGE_CONFIG;
+  try {
+    const raw = fs.readFileSync(full, "utf-8");
+    const parsed = JSON.parse(raw) as Partial<TriageConfig>;
+    return { ...DEFAULT_TRIAGE_CONFIG, ...parsed };
+  } catch (err) {
+    console.warn(`[skynex-triage] Failed to load ${CONFIG_PATH}, using defaults:`, err);
+    return DEFAULT_TRIAGE_CONFIG;
+  }
+}
+
+function formatNotification(result: TriageResult): string {
+  const icons = { small: "▪", medium: "◆", substantial: "★" } as const;
+  const lines = [
+    `${icons[result.path]} TRIAGE: ${result.path.toUpperCase()}`,
+    `   Reason: ${result.reason}`,
+  ];
+  if (result.has_risk_keywords) lines.push("   ⚠ Risk keywords detected — extra caution");
+  if (result.tdd) lines.push("   ✓ TDD enforced (Iron Law L4 active)");
+  return lines.join("\n");
+}
+
+// In-memory state for the current session (used by phase extensions later).
+// Pi does not yet have a first-class "session state" API for extensions, so we
+// use a module-level Map keyed by session id. When the session ends, the entry
+// is dropped (see session_shutdown handler below).
+const sessionTriageStore = new Map<string, TriageResult>();
+
+export default function (pi: ExtensionAPI) {
+  // Recompute config per session in case user edits .skynex/triage.json
+  let cachedConfig: TriageConfig | undefined;
+
+  pi.on("session_start", async (_event, ctx) => {
+    cachedConfig = loadConfig(ctx.cwd);
+  });
+
+  pi.on("before_agent_start", async (event, ctx) => {
+    const config = cachedConfig ?? loadConfig(ctx.cwd);
+    cachedConfig = config;
+
+    const result = triage(
+      { prompt: event.prompt, cwd: ctx.cwd },
+      config,
+    );
+
+    // Store result keyed by current session file (best-effort identifier)
+    const sessionId =
+      ctx.sessionManager.getSessionFile() ?? `ephemeral-${process.pid}`;
+    sessionTriageStore.set(sessionId, result);
+
+    // Notify user (only when interactive — silent in print/RPC mode)
+    if (ctx.hasUI) {
+      ctx.ui.notify(formatNotification(result), "info");
+    }
+
+    // No-op return: we do not modify the system prompt or inject a custom
+    // message. Phase extensions will read the triage state via getTriage() helper.
+  });
+
+  pi.on("session_shutdown", async (_event, ctx) => {
+    const sessionId =
+      ctx.sessionManager.getSessionFile() ?? `ephemeral-${process.pid}`;
+    sessionTriageStore.delete(sessionId);
+  });
+
+  // ── Commands ─────────────────────────────────────────────────────────────
+
+  pi.registerCommand("triage:status", {
+    description: "Show the triage result for the most recent request in this session",
+    handler: async (_args, ctx) => {
+      const sessionId =
+        ctx.sessionManager.getSessionFile() ?? `ephemeral-${process.pid}`;
+      const result = sessionTriageStore.get(sessionId);
+
+      if (!result) {
+        ctx.ui.notify("No triage result yet — send a request first.", "warning");
+        return;
+      }
+
+      const lines = [
+        `Path:                ${result.path.toUpperCase()}`,
+        `Reason:              ${result.reason}`,
+        `TDD enforced:        ${result.tdd ? "yes" : "no"}`,
+        `Estimated files:     ${result.estimated_files}`,
+        `Estimated modules:   ${result.estimated_modules}`,
+        `Risk keywords:       ${result.has_risk_keywords ? "yes" : "no"}`,
+        `Computed at:         ${result.ts}`,
+        ``,
+        `Signals:`,
+        ...result.signals.map((s) => `  • ${s}`),
+      ];
+      ctx.ui.notify(lines.join("\n"), "info");
+    },
+  });
+
+  pi.registerCommand("triage:test", {
+    description:
+      "Run triage against a hypothetical prompt without executing the agent. Usage: /triage:test <prompt>",
+    handler: async (args, ctx) => {
+      const prompt = (args ?? "").trim();
+      if (!prompt) {
+        ctx.ui.notify(
+          "Usage: /triage:test <prompt>\nExample: /triage:test add pagination to GET /orders",
+          "warning",
+        );
+        return;
+      }
+      const config = cachedConfig ?? loadConfig(ctx.cwd);
+      const result = triage({ prompt, cwd: ctx.cwd }, config);
+      const lines = [
+        `Hypothetical triage for: "${prompt.slice(0, 80)}${prompt.length > 80 ? "..." : ""}"`,
+        ``,
+        formatNotification(result),
+        ``,
+        `Signals:`,
+        ...result.signals.map((s) => `  • ${s}`),
+      ];
+      ctx.ui.notify(lines.join("\n"), "info");
+    },
+  });
+}
+
+// ── Helpers exported for downstream phase extensions (Sprint 2-3) ──────────
+
+/**
+ * Returns the triage result computed for the most recent request in this
+ * session, or undefined if triage has not run yet.
+ *
+ * Phase extensions (discover, plan, etc.) should call this at the start of
+ * their handler to decide branching behavior.
+ */
+export function getTriage(sessionFile: string | undefined): TriageResult | undefined {
+  const sessionId = sessionFile ?? `ephemeral-${process.pid}`;
+  return sessionTriageStore.get(sessionId);
+}

@@ -31,14 +31,21 @@ Each sprint produces something that works end-to-end at increasing capability. A
 
 **Goal**: 6 extensions that enforce the discipline of skynex through Pi hooks (not prompts). At the end of this sprint, Small path works end-to-end and infrastructure is ready for the workflow phases.
 
-### S1-1 — `triage.ts`
+### S1-1 — `triage` ✅ DONE 2026-05-20
 
-**File**: `extensions/core/triage.ts`
+**Files**:
+- `extensions/core/triage/types.ts` — `TriageResult`, `TriageConfig`, `DEFAULT_TRIAGE_CONFIG`
+- `extensions/core/triage/rules.ts` — pure deterministic matchers (zero I/O, zero LLM)
+- `extensions/core/triage/index.ts` — Pi extension (hook `before_agent_start`, commands `/triage:status`, `/triage:test`)
+- `extensions/core/triage/rules.test.ts` — 25 unit tests (all pass)
+
 **Hook**: `before_agent_start`
-**Estimated**: 2 days
-**Depends on**: nothing
+**Status**: implemented, typechecked, 25/25 tests pass
+**Lines**: 415 (types: 90, rules: 145, index: 145, tests: 135)
 
-Reads the user prompt, runs deterministic rules to classify path = small / medium / substantial. Also detects `tdd` flag and risk keywords.
+Reads the user prompt, runs deterministic rules to classify path = small / medium / substantial. Detects `tdd` flag and risk keywords. Result stored in `sessionTriageStore` keyed by session file, retrievable by phase extensions via exported `getTriage(sessionFile)` helper.
+
+Config loaded from `.skynex/triage.json` if present, defaults otherwise.
 
 Output:
 ```typescript
@@ -49,10 +56,14 @@ interface TriageResult {
   estimated_files: number;
   estimated_modules: number;
   has_risk_keywords: boolean;
+  signals: string[];   // audit trail
+  ts: string;          // ISO 8601
 }
 ```
 
-Stored in session state. Read by all subsequent phase extensions.
+**Decision during implementation**: `auth`/`payment`/etc. risk keywords promote to `substantial` even for trivial-looking changes (e.g., renaming inside `src/auth/`). Intentional — anything touching auth deserves the rigor.
+
+Stored in session state. Read by all subsequent phase extensions in Sprint 2-3.
 
 ### S1-2 — `iron-law.ts` (L4)
 

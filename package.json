@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
+    "test": "tsx --test extensions/**/*.test.ts",
+    "test:triage": "tsx --test extensions/core/triage/rules.test.ts",
     "setup": "bash scripts/setup.sh"
   },
   "dependencies": {
@@ -12,7 +14,8 @@
   },
   "devDependencies": {
     "typescript": "^5.4.0",
-    "@types/node": "^20.0.0"
+    "@types/node": "^20.0.0",
+    "tsx": "^4.19.2"
   },
   "engines": {
     "node": ">=20.0.0"
