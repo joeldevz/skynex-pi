@@ -65,14 +65,32 @@ interface TriageResult {
 
 Stored in session state. Read by all subsequent phase extensions in Sprint 2-3.
 
-### S1-2 — `iron-law.ts` (L4)
+### S1-2 — `iron-law` (L4) ✅ DONE 2026-05-20
 
-**File**: `extensions/core/iron-law.ts`
-**Hook**: `tool_call` on `write`/`edit`, `tool_result` after impl
-**Estimated**: 3 days
-**Depends on**: triage (reads `tdd` flag)
+**Files**:
+- `extensions/core/iron-law/types.ts` — `IronLawConfig`, `DEFAULT_IRON_LAW_CONFIG`, override + state types
+- `extensions/core/iron-law/matcher.ts` — pure glob matching (uses `minimatch`)
+- `extensions/core/iron-law/index.ts` — Pi extension: 3 hook rules + 2 commands
+- `extensions/core/iron-law/matcher.test.ts` — 28 unit tests (all pass)
 
-Always-on TDD enforcement with whitelist. Blocks `write` to production code unless a failing test exists. Blocks editing of green tests. Override available with logged reason.
+**Hook**: `tool_call` on `write`/`edit`
+**Status**: implemented, typechecked, 28/28 matcher tests pass + 53/53 overall
+**Lines**: ~580 (types: 110, matcher: 75, index: 280, tests: 115)
+
+Enforces three rules:
+1. Production code (`src/**/*.ts`, etc.) requires a test file
+2. Test must fail BEFORE writing impl (runs the test if pre-existing)
+3. Cannot edit a passing test
+
+Whitelist: docs, configs, `.github/`, `scripts/`, `.skynex/`, test files themselves.
+
+Test runner detected from `package.json` scripts (jest/vitest/tsx supported).
+
+Override: `/iron-law:override <file> [reason]` — one-shot per file, logged to `.skynex/iron-law-overrides.md` for team audit.
+
+Status command: `/iron-law:status` — shows files written this session + active overrides.
+
+**Decision during implementation**: replaced hand-rolled `globToRegex` with `minimatch` (8 glob tests failed with custom impl, 0 with minimatch). Added minimatch as direct dep. Same library Pi itself uses.
 
 See `docs/design/request-flow.md` § TDD Iron Law (L4).
 
