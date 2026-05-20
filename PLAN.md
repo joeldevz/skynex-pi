@@ -178,14 +178,59 @@ Binary auto-detection: checks `~/.local/bin/neurox`, `/usr/local/bin/neurox`, `/
 
 See `docs/design/request-flow.md` § Skill Registry feedback loop.
 
-### S1-6 — `production-gate.ts`
+### S1-6 — `production-gate` ✅ DONE 2026-05-20
 
-**File**: `extensions/core/production-gate.ts`
-**Hook**: `tool_call` on `bash`, `write`, `edit`
-**Estimated**: 4 days
-**Depends on**: nothing (integrates with smart-zone for token-aware preview)
+**Files**:
+- `extensions/core/production-gate/types.ts` — config schema, pattern catalog, audit shapes
+- `extensions/core/production-gate/detector.ts` — pure pattern matching (uses minimatch for kubectl/branch globs)
+- `extensions/core/production-gate/audit.ts` — append-only JSONL log + rotation + auto-gitignore
+- `extensions/core/production-gate/index.ts` — Pi extension: tool_call hook + 7 commands
+- `extensions/core/production-gate/detector.test.ts` — 51 pattern tests
 
-Pattern-matching gate that blocks production-affecting commands. Strict by default. Typed confirmation. Audit log. Configurable via `.skynex/production-gate.json`.
+**Hook**: `tool_call` on `bash`
+**Status**: implemented, typechecked, 51/51 detector tests pass. Sprint 1 total: 175/175.
+**Lines**: ~1100 (types: 170, detector: 320, audit: 100, index: 380, tests: 320)
+
+Pattern catalog (all enabled by default):
+- `kubectl` mutations (apply/delete/scale/rollout/drain/exec/edit/patch/replace) — always-allow verbs: get/describe/logs/top/diff
+- `db_migrations` (prisma/rails/alembic/knex/sqlx/flyway/drizzle/atlas)
+- `db_direct` SQL DELETE FROM/DROP TABLE/TRUNCATE/UPDATE without WHERE/FLUSHALL/deleteMany
+- `terraform` apply/destroy/import
+- `pulumi` up/destroy/refresh
+- `helm` upgrade/uninstall/rollback/install
+- `git_force` (--force / --force-with-lease / -f / -fu)
+- `git_main_push` to main/master/production/prod/release/* (with safe-branch exemption: personal/* feat/* fix/* chore/*)
+- `publishing` (npm/pnpm/yarn/cargo publish; twine upload)
+- `destructive_fs` (rm -rf /, sudo rm, chmod 777 /)
+- `cloud_delete` aws/gcloud/az + delete/remove/terminate/destroy
+- `container_destructive` (docker volume rm, docker system prune, kubectl delete pvc)
+- `service_control` (systemctl restart/stop, pm2 reload)
+- `custom_patterns` (team-defined regex via config)
+
+Modes:
+- `strict` (default) — block + require typed confirmation `"yes apply"`
+- `warn` — show warning, log, allow
+- `silent` — log only, no UI
+- `off` — disabled
+
+First-run UX: creates `.skynex/production-gate.json` (gitignored) + `.skynex/production-gate.example.json` (committable) + adds both `production-gate.json` and `audit.log` to `.gitignore`.
+
+Audit log JSONL append-only at `.skynex/audit.log`. Rotation at 50 MB. Entries include: timestamp, command, category, subtype, severity, context (kubectl context, git branch), confirmed/aborted, response, outcome, mode, session, duration_ms. Mode changes logged as separate entries.
+
+Commands:
+- `/production-gate:status` — mode + recent audit
+- `/production-gate:test "<cmd>"` — dry-run
+- `/production-gate:add-safe <name>` — add to safe_contexts (auto-detects branch vs kubectl by `*` or `/`)
+- `/production-gate:remove-safe <name>`
+- `/production-gate:audit [--category=X]` — query log
+- `/production-gate:mode <strict|warn|silent|off>` — change mode (logged)
+- `/production-gate:reload-config` — re-read config
+
+**Decisions during implementation**:
+1. JavaScript regex doesn't support `(?i)` inline flag → wrote `compileRegex()` that extracts POSIX-style `(?i)`/`(?im)` prefix to JS regex flags. This let us keep the user-facing config syntax POSIX-compatible.
+2. `db_direct` regex required SQL context (`DELETE FROM`, `DROP TABLE`, etc.) — initial broad `(DELETE|DROP)` matched `kubectl delete` command. Required SQL keyword + object-noun to be specific.
+3. Real kubectl context resolved via `kubectl config current-context` (best-effort, 2s timeout) when the command doesn't specify `--context=`.
+4. `auto-gitignore` runs every audit append (idempotent, cheap check) — guarantees the file never accidentally gets committed if user removed it from `.gitignore`.
 
 See `docs/design/production-gate.md` for full spec.
 
