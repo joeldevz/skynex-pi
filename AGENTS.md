@@ -75,7 +75,24 @@ When the user asks for a production-affecting action (e.g. `kubectl apply`, `ter
 
 If the user manually configured the gate to mode `off` or `warn`, you'll see commands execute without a dialog — that's their explicit decision.
 
-## Skills available (load on-demand with `/skill:name`)
+## Medium-path workflow (triage → discover → plan → build → validate)
+
+When triage classifies a request as **`medium`** or **`substantial`**, follow this workflow in order. Each phase is a skill that delegates to a sub-agent via the `subagent` tool (from the `pi-sub-agent` package).
+
+| Phase | Skill | Sub-agent | Mode |
+|---|---|---|---|
+| 1 | `/skill:discover` | `scout` | single |
+| 2 | `/skill:plan` | `tech-planner` | single |
+| 3 | `/skill:build` | `coder` + `verifier` | chain (sequential) or parallel (independent slices) |
+| 4 | `/skill:validate` | `test-reviewer` + `security`×2 + `skill-validator` | parallel (all 4 at once) |
+
+Each skill expects to be invoked in order. Each emits a structured envelope that the next phase consumes. Never skip phases. If discover surfaces `open_questions`, STOP and ask the user — do not run plan with unresolved ambiguity.
+
+**For `small` triage path**: skip the workflow. The orchestrator handles trivial changes directly.
+
+**For `conversational` triage path**: do not invoke any skill. Just respond briefly.
+
+## Other skills (load on-demand with `/skill:name`)
 
 - `grill-me` — discovery questioning (one question at a time)
 - `tdd-discipline` — TDD workflow (red → green → refactor)
