@@ -195,23 +195,23 @@ test("cache: valid when source files unchanged", () => {
 
 test("agent-map: returns subset matching agent_skill_map", () => {
   const tmp = makeTempProject([
-    { dir: "grill-me", content: minimalSkill("grill-me") },
-    { dir: "tdd-discipline", content: minimalSkill("tdd-discipline") },
-    { dir: "security", content: minimalSkill("security") },
+    { dir: "propose", content: minimalSkill("propose") },
+    { dir: "specify", content: minimalSkill("specify") },
+    { dir: "discover", content: minimalSkill("discover") },
   ]);
   try {
     const reg = buildRegistry(tmp, DEFAULT_REGISTRY_CONFIG, path.join(tmp, ".nonexistent-agent-dir"));
-    const coderSkills = getSkillsForAgent(reg, "coder", DEFAULT_REGISTRY_CONFIG);
-    const securitySkills = getSkillsForAgent(reg, "security", DEFAULT_REGISTRY_CONFIG);
+    const productPlannerSkills = getSkillsForAgent(reg, "product-planner", DEFAULT_REGISTRY_CONFIG);
+    const architectSkills = getSkillsForAgent(reg, "architect", DEFAULT_REGISTRY_CONFIG);
 
-    // coder is mapped to ["tdd-discipline", "verification-before-completion"]
-    // verification-before-completion is not in our temp project, so only tdd-discipline returns
-    assert.equal(coderSkills.length, 1);
-    assert.equal(coderSkills[0].name, "tdd-discipline");
+    // product-planner is mapped to ["propose", "specify"]
+    assert.equal(productPlannerSkills.length, 2);
+    assert.ok(productPlannerSkills.some((s) => s.name === "propose"));
+    assert.ok(productPlannerSkills.some((s) => s.name === "specify"));
 
-    // security mapped to ["security", "adversarial-review"], only "security" exists
-    assert.equal(securitySkills.length, 1);
-    assert.equal(securitySkills[0].name, "security");
+    // architect mapped to ["specify"], so only specify returns
+    assert.equal(architectSkills.length, 1);
+    assert.equal(architectSkills[0].name, "specify");
   } finally {
     cleanup(tmp);
   }
@@ -257,4 +257,44 @@ test("prompt: empty registry returns empty string", () => {
   } finally {
     cleanup(tmp);
   }
+});
+
+// ─── agent_skill_map (Sprint 3 additions) ────────────────────────────────────
+
+test("agent-map: product-planner maps to ['propose', 'specify']", () => {
+  const config = DEFAULT_REGISTRY_CONFIG;
+  assert.deepEqual(config.agent_skill_map["product-planner"], ["propose", "specify"]);
+});
+
+test("agent-map: architect maps to ['specify']", () => {
+  const config = DEFAULT_REGISTRY_CONFIG;
+  assert.deepEqual(config.agent_skill_map["architect"], ["specify"]);
+});
+
+test("agent-map: archivist maps to [] (no skills)", () => {
+  const config = DEFAULT_REGISTRY_CONFIG;
+  assert.deepEqual(config.agent_skill_map["archivist"], []);
+});
+
+test("agent-map: no entry references empty skill folders", () => {
+  const config = DEFAULT_REGISTRY_CONFIG;
+  const emptySkills = new Set([
+    "grill-me",
+    "prd",
+    "tdd-discipline",
+    "verification-before-completion",
+    "adversarial-review",
+  ]);
+  const referencedSkills = new Set<string>();
+  for (const skills of Object.values(config.agent_skill_map)) {
+    for (const skill of skills) {
+      referencedSkills.add(skill);
+    }
+  }
+  const invalidRefs = Array.from(referencedSkills).filter((s) => emptySkills.has(s));
+  assert.equal(
+    invalidRefs.length,
+    0,
+    `Found references to empty skill folders: ${invalidRefs.join(", ")}`,
+  );
 });

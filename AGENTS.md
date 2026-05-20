@@ -73,6 +73,7 @@ Neurox stores observations across MANY projects in different namespaces (e.g. `d
 - `smart-zone` — monitors token budget; warning at 80K, auto-compact at 100K.
 - `neurox-tool` — gives you `neurox_recall`, `neurox_save`, `neurox_context`, `neurox_session_start`, `neurox_session_end`.
 - `production-gate` — blocks production-affecting commands (`kubectl apply`, `terraform apply`, `git push --force`, `npm publish`, `rm -rf /`, etc.) and requires typed confirmation.
+- `archive` — post-completion archival hook. Detects substantial-path sessions that reached the build phase and notifies the user to run `/archive:run`, which dispatches the archivist sub-agent to synthesize Neurox observations.
 
 ## How to interact with the production-gate (important)
 
@@ -106,25 +107,46 @@ Handle the change yourself with TDD if needed (the iron-law hook enforces it for
    - If scout found **no relevant context** AND the task is **self-contained (≤2 files, no risk keywords)** → you MAY skip plan/validate and go directly to build with TDD.
 3. If you proceeded to plan → continue to `/skill:build` → `/skill:validate`.
 
-### `substantial` — workflow MANDATORY, no skips
+### `substantial` — workflow MANDATORY, HITL gates enforced
 
-1. `/skill:discover` — REQUIRED
-2. `/skill:plan` — REQUIRED (HITL gate: present plan to user before proceeding)
-3. `/skill:build` — REQUIRED per slice
-4. `/skill:validate` — REQUIRED before completion
+1. `/skill:discover` — REQUIRED (scout exploration, read scout envelope)
+2. `/skill:propose` — REQUIRED (product-planner writes 1-page proposal.md → **HITL gate: STOP for user approval**)
+3. `/skill:specify` — REQUIRED (product-planner + architect IN PARALLEL → SPEC.md → **HITL gate: STOP for user approval**)
+4. `/skill:plan` — REQUIRED (tech-planner reads SPEC.md → PLAN.md → **HITL gate if slices_count > 3**)
+5. `/skill:build` — REQUIRED per slice (coder + verifier chain, parallel for disjoint slices)
+6. `/skill:validate` — REQUIRED before completion (test-reviewer + security ×2 + skill-validator in parallel)
 
-**Never skip phases in substantial path.** Auth/payment/migration/security changes always go through the full workflow regardless of size.
+**Auto-archive on session_shutdown**: the `archive` extension detects substantial-path sessions that reached at least the build phase, and notifies the user to run `/archive:run` which invokes the archivist sub-agent to synthesize Neurox observations.
 
-### The 4 phase skills
+**Never skip phases.** Never write code before steps 1-4 are all approved by the user. HITL gates at steps 2, 3, and 4 (when slices_count > 3) are mandatory — wait for explicit `approve` / `edit "<note>"` / `cancel`.
 
-| Phase | Skill | Sub-agent | Mode |
+**When substantial path is triggered**: auth/payment/migration/security/cross-cutting keywords, OR `module_count >= 3`, OR `ambiguity_hits >= 3` (configurable in `.skynex/triage.config.json`).
+
+### The 6 phase skills (substantial path)
+
+| Phase | Skill | Sub-agent(s) | Mode |
 |---|---|---|---|
 | 1 | `/skill:discover` | `scout` | single |
-| 2 | `/skill:plan` | `tech-planner` | single |
-| 3 | `/skill:build` | `coder` + `verifier` | chain (sequential) or parallel (independent slices) |
-| 4 | `/skill:validate` | `test-reviewer` + `security`×2 + `skill-validator` | parallel (4 at once) |
+| 2 | `/skill:propose` | `product-planner` | single |
+| 3 | `/skill:specify` | `product-planner` + `architect` | parallel |
+| 4 | `/skill:plan` | `tech-planner` | single |
+| 5 | `/skill:build` | `coder` + `verifier` | chain (sequential) or parallel (independent slices) |
+| 6 | `/skill:validate` | `test-reviewer` + `security`×2 + `skill-validator` | parallel (4 at once) |
 
 Each skill emits a structured envelope. The next phase consumes that envelope. If any envelope has `status: blocked` or `status: questions_pending`, STOP and surface to the user.
+
+### Sub-agents in substantial path
+
+- `scout` — Context discovery and open question detection (read-only, calls Neurox)
+- `product-planner` — Produces acceptance criteria, edge cases, error modes (read-only)
+- `architect` — Produces modules, data flow, decisions, tradeoffs, risks (read-only)
+- `tech-planner` — Converts SPEC.md into technical PLAN.md with slices and risk mitigation (read-only)
+- `coder` — Implements slices per PLAN.md with TDD (executes bash, git, edit/write)
+- `verifier` — Post-implementation verification chain (test runner, type checker, lint)
+- `test-reviewer` — Post-completion test quality audit (read-only)
+- `security` — Security review (appears 2× in validation phase, read-only)
+- `skill-validator` — Checks adherence to project conventions and skills (read-only)
+- `archivist` — Post-completion session synthesis for Neurox archival (read-only + bash for git inspection)
 
 ## Other skills (load on-demand with `/skill:name`)
 
@@ -134,6 +156,8 @@ Each skill emits a structured envelope. The next phase consumes that envelope. I
 - `adversarial-review` — dual-judge adversarial review
 - `prd` — product requirements document
 - `security` — security review
+- `propose` — early HITL gate for substantial path. Invokes product-planner solo to produce proposal.md.
+- `specify` — produces unified SPEC.md. Invokes product-planner + architect in parallel.
 
 ## Response format
 
