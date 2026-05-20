@@ -259,11 +259,11 @@ export default function (pi: ExtensionAPI) {
     name: "neurox_save",
     label: "Neurox: Save",
     description:
-      "Persist an observation to durable memory. Save IMMEDIATELY when: a decision is made, a bug is fixed, a pattern is discovered, or the user states a preference. Content format: 'What: / Why: / Where: / Learned:'.",
+      "Persist an observation to durable memory. Save IMMEDIATELY when a decision is made, a bug is fixed, a pattern is discovered, a gotcha is encountered, or the user states a preference. Content format: 'What: / Why: / Where: / Learned:'. The `type` parameter MUST be one of exactly: decision, bugfix, discovery, pattern, gotcha, config, preference. Do NOT invent other values like 'implementation', 'task', or 'feature'.",
     parameters: Type.Object({
-      title: Type.String({ description: "Short, searchable title" }),
-      content: Type.String({ description: "Body in What/Why/Where/Learned format" }),
-      namespace: Type.Optional(Type.String()),
+      title: Type.String({ description: "Short, searchable title (positional in CLI, ≤80 chars)" }),
+      content: Type.String({ description: "Body in 'What: / Why: / Where: / Learned:' format" }),
+      namespace: Type.Optional(Type.String({ description: "Defaults to project namespace (e.g., 'skynex-pi')" })),
       type: Type.Optional(Type.Union([
         Type.Literal("decision"),
         Type.Literal("bugfix"),
@@ -272,20 +272,26 @@ export default function (pi: ExtensionAPI) {
         Type.Literal("gotcha"),
         Type.Literal("config"),
         Type.Literal("preference"),
-      ])),
+      ], {
+        description: "REQUIRED enum. decision=arch/design choice. bugfix=fixed defect. discovery=found-out fact. pattern=reusable approach. gotcha=trap/surprise. config=setting/env. preference=user wants. Defaults to 'discovery' if omitted.",
+      })),
       kind: Type.Optional(Type.Union([
         Type.Literal("episodic"),
         Type.Literal("semantic"),
         Type.Literal("procedural"),
-      ])),
-      tags: Type.Optional(Type.String({ description: "Comma-separated tags" })),
+      ], {
+        description: "episodic=one event. semantic=fact/concept. procedural=how-to. Default: semantic.",
+      })),
+      tags: Type.Optional(Type.String({ description: "Comma-separated tags (no quotes)" })),
       files: Type.Optional(Type.String({ description: "Comma-separated file paths" })),
-      topic_key: Type.Optional(Type.String({ description: "Unique key for upsert" })),
+      topic_key: Type.Optional(Type.String({ description: "Unique key for upsert (same key = update in place)" })),
       confidence: Type.Optional(Type.Number({ description: "0.0-1.0, default 0.7" })),
       retention: Type.Optional(Type.Union([
         Type.Literal("durable"),
         Type.Literal("operational"),
-      ])),
+      ], {
+        description: "durable (default) = promoted to Core eventually. operational = stays in fast memory only.",
+      })),
     }),
     async execute(_toolCallId, params) {
       if (!binary) {

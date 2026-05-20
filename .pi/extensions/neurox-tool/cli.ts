@@ -44,8 +44,10 @@ export function buildRecallArgs(input: RecallInput, _defaultNamespace: string): 
 }
 
 export function buildSaveArgs(input: SaveInput, defaultNamespace: string): string[] {
+  // neurox save: ALL flags first, THEN the title as the final positional arg.
+  // The Go flag parser stops at the first non-flag token, so the title MUST be
+  // last. `-title` is NOT a supported flag (verified against neurox v0.5.4).
   const args: string[] = ["save"];
-  pushFlag(args, "-title", input.title); // -title is needed but used positionally too — but neurox accepts as flag
   pushFlag(args, "-content", input.content);
   pushFlag(args, "-namespace", input.namespace ?? defaultNamespace);
   pushFlag(args, "-type", input.type);
@@ -55,6 +57,8 @@ export function buildSaveArgs(input: SaveInput, defaultNamespace: string): strin
   pushFlag(args, "-topic-key", input.topic_key);
   pushFlag(args, "-confidence", input.confidence);
   pushFlag(args, "-retention", input.retention);
+  // Title goes LAST as positional argument
+  args.push(input.title);
   return args;
 }
 

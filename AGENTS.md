@@ -75,22 +75,45 @@ When the user asks for a production-affecting action (e.g. `kubectl apply`, `ter
 
 If the user manually configured the gate to mode `off` or `warn`, you'll see commands execute without a dialog — that's their explicit decision.
 
-## Medium-path workflow (triage → discover → plan → build → validate)
+## Workflow per triage path (MANDATORY)
 
-When triage classifies a request as **`medium`** or **`substantial`**, follow this workflow in order. Each phase is a skill that delegates to a sub-agent via the `subagent` tool (from the `pi-sub-agent` package).
+The triage extension classifies every request. **You MUST follow the workflow assigned to the detected path.** Do NOT improvise or skip phases just because a task looks small.
+
+### `conversational` — no workflow
+
+Respond briefly. Do NOT call any `neurox_*` tool, do NOT invoke any `/skill:*`.
+
+### `small` — direct execution, no skills
+
+Handle the change yourself with TDD if needed (the iron-law hook enforces it for production code). Do NOT invoke `/skill:discover` or any other phase skill for trivial mechanical changes.
+
+### `medium` — workflow RECOMMENDED with escape hatch
+
+1. **Invoke `/skill:discover` first** to gather context via the scout sub-agent (this also calls `neurox_recall` for prior decisions).
+2. After reading the scout's envelope:
+   - If scout returned **prior decisions relevant to this task** OR **open_questions** → continue to `/skill:plan`.
+   - If scout found **no relevant context** AND the task is **self-contained (≤2 files, no risk keywords)** → you MAY skip plan/validate and go directly to build with TDD.
+3. If you proceeded to plan → continue to `/skill:build` → `/skill:validate`.
+
+### `substantial` — workflow MANDATORY, no skips
+
+1. `/skill:discover` — REQUIRED
+2. `/skill:plan` — REQUIRED (HITL gate: present plan to user before proceeding)
+3. `/skill:build` — REQUIRED per slice
+4. `/skill:validate` — REQUIRED before completion
+
+**Never skip phases in substantial path.** Auth/payment/migration/security changes always go through the full workflow regardless of size.
+
+### The 4 phase skills
 
 | Phase | Skill | Sub-agent | Mode |
 |---|---|---|---|
 | 1 | `/skill:discover` | `scout` | single |
 | 2 | `/skill:plan` | `tech-planner` | single |
 | 3 | `/skill:build` | `coder` + `verifier` | chain (sequential) or parallel (independent slices) |
-| 4 | `/skill:validate` | `test-reviewer` + `security`×2 + `skill-validator` | parallel (all 4 at once) |
+| 4 | `/skill:validate` | `test-reviewer` + `security`×2 + `skill-validator` | parallel (4 at once) |
 
-Each skill expects to be invoked in order. Each emits a structured envelope that the next phase consumes. Never skip phases. If discover surfaces `open_questions`, STOP and ask the user — do not run plan with unresolved ambiguity.
-
-**For `small` triage path**: skip the workflow. The orchestrator handles trivial changes directly.
-
-**For `conversational` triage path**: do not invoke any skill. Just respond briefly.
+Each skill emits a structured envelope. The next phase consumes that envelope. If any envelope has `status: blocked` or `status: questions_pending`, STOP and surface to the user.
 
 ## Other skills (load on-demand with `/skill:name`)
 
