@@ -5,9 +5,10 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test extensions/**/*.test.ts",
-    "test:triage": "tsx --test extensions/core/triage/rules.test.ts",
-    "setup": "bash scripts/setup.sh"
+    "test": "tsx --test .pi/extensions/**/*.test.ts",
+    "test:triage": "tsx --test .pi/extensions/triage/rules.test.ts",
+    "doctor": "bash scripts/doctor.sh",
+    "start": "bash scripts/start.sh"
   },
   "dependencies": {
     "@earendil-works/pi-coding-agent": "^0.75.3",

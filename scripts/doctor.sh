@@ -104,10 +104,10 @@ fi
 # ─── 7. Extensions present ───────────────────────────────────────────────────
 EXTS=(triage iron-law skill-registry smart-zone neurox-tool production-gate)
 for ext in "${EXTS[@]}"; do
-  if [ -f "extensions/core/$ext/index.ts" ]; then
+  if [ -f ".pi/extensions/$ext/index.ts" ]; then
     ok "extension: $ext"
   else
-    fail "extension: $ext (missing extensions/core/$ext/index.ts)"
+    fail "extension: $ext (missing .pi/extensions/$ext/index.ts)"
     FAIL=1
   fi
 done
@@ -140,7 +140,7 @@ fi
 # ─── 10. Tests sanity ────────────────────────────────────────────────────────
 if [ -f "node_modules/.bin/tsx" ]; then
   info "Running test suite..."
-  if ./node_modules/.bin/tsx --test extensions/core/triage/rules.test.ts >/dev/null 2>&1; then
+  if ./node_modules/.bin/tsx --test .pi/extensions/triage/rules.test.ts >/dev/null 2>&1; then
     ok "Smoke test: triage rules pass (run pnpm test for full 175 tests)"
   else
     fail "Smoke test: triage rules failed. Run pnpm test to see details."
