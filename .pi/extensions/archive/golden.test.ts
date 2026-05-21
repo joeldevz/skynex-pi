@@ -305,3 +305,20 @@ test("golden: medium path should_load_neurox is true", () => {
   // medium path should load neurox for context
   assert.equal(result.should_load_neurox, true, "medium path must load neurox");
 });
+
+test("golden: research SKILL.md exists with Compact Rules", () => {
+  const p = resolve(REPO_ROOT, ".pi/skills/research/SKILL.md");
+  assert.ok(existsSync(p), "research/SKILL.md must exist");
+  const content = readFileSync(p, "utf8");
+  assert.match(content, /name:\s*research/);
+  assert.match(content, /## Compact Rules/);
+  assert.match(content, /web_search/);
+  assert.match(content, /fetch_content/);
+});
+
+test("golden: scout.md includes web_search and fetch_content tools", () => {
+  const p = resolve(REPO_ROOT, ".pi/agents/scout.md");
+  const content = readFileSync(p, "utf8");
+  assert.match(content, /web_search/);
+  assert.match(content, /fetch_content/);
+});
