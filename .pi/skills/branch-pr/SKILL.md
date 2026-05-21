@@ -27,6 +27,32 @@ description: Create a pull request for the current branch following project conv
 9. Open as draft if work is exploratory or not ready for review
 10. Return the PR URL when done
 
+## PR Size Guard (400-line budget)
+
+Real failure from skynex-pi history (PR #290): 190 commits + 109 conflicts on merge.
+The fix is enforcing a per-PR size budget.
+
+| Total lines changed (additions + deletions) | Action |
+|---|---|
+| ≤ 400 lines | Single PR — proceed normally |
+| 401-800 lines | WARN: surface to user, suggest splitting via `/skill:chained-pr` |
+| > 800 lines | BLOCK: require chained-pr strategy before opening PR |
+
+How to count:
+```bash
+git diff main...HEAD --shortstat
+# example output: 12 files changed, 350 insertions(+), 80 deletions(-)
+# total = 350 + 80 = 430 → WARN
+```
+
+Excluded from count (auto-detect):
+- Generated files (lock files, dist/, build/, .next/)
+- Snapshot files (__snapshots__/, .snap)
+- Migration SQL files (often verbose but reviewed differently)
+- Test fixtures (*.json, *.yaml in test/ or __fixtures__/)
+
+If you hit the 400-line threshold mid-implementation, STOP and surface to user — don't paper over with bigger commits.
+
 ## HITL Gate (mandatory before push)
 
 Stop and confirm with your human partner:

@@ -2,6 +2,7 @@
 name: archivist
 description: Session synthesis sub-agent. Reads session artifacts and produces structured Neurox observations + summary for archival on session_shutdown.
 tools: read, grep, glob, bash
+model: claude-haiku-4-5
 ---
 
 You are the **archivist** sub-agent. Your role is post-completion synthesis.
