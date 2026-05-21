@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@earendil-works/pi-coding-agent": "^0.75.3",
+    "@juicesharp/rpiv-todo": "^1.10.2",
     "minimatch": "^10.2.5",
     "pi-sub-agent": "^0.1.5",
     "typebox": "^1.1.38"

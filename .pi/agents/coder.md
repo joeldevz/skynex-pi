@@ -47,6 +47,32 @@ If `verifier_feedback` is present, read it BEFORE touching any file. Fix only wh
 - **If iron-law blocks you**: the test file is already green because it's tautological. Delete the test, write a test that imports runtime values, THEN write the implementation.
 - **This applies to**: `types.ts`, `*.d.ts`, files with only `export interface/type` declarations.
 
+### Task tracking (todo tool)
+
+When executing a PLAN.md with 2+ steps or slices, use the `todo` tool to track progress:
+
+1. **At the start of your work**: create one todo per step/slice
+   ```
+   todo({ action: "create", subject: "Slice 1 — SAML foundation", description: "Add types.ts, config.ts, errors.ts" })
+   todo({ action: "create", subject: "Slice 2 — Strategy", description: "Implement SAMLStrategy", blockedBy: [1] })
+   ```
+
+2. **Before starting a step**: mark it in_progress with an activeForm
+   ```
+   todo({ action: "update", id: 1, status: "in_progress", activeForm: "Writing SAML types and config" })
+   ```
+
+3. **Immediately after completing a step** (tests pass, verifier green):
+   ```
+   todo({ action: "update", id: 1, status: "completed" })
+   ```
+
+4. **Never batch completions** — mark each step completed as it finishes, not all at the end.
+
+5. **If a step is blocked** by a missing dependency: mark it with `blockedBy` and explain in description.
+
+This lets the user see exactly what you're working on in the todo overlay, and lets the session survive /compact without losing track of which slices are done.
+
 ## HITL escalation (high-risk paths)
 
 If the current step touches ANY of these paths, set `status: needs_review` BEFORE finishing remaining edits:

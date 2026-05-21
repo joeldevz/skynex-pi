@@ -11,6 +11,9 @@ importers:
       '@earendil-works/pi-coding-agent':
         specifier: ^0.75.3
         version: 0.75.3(ws@8.20.1)(zod@4.4.3)
+      '@juicesharp/rpiv-todo':
+        specifier: ^1.10.2
+        version: 1.10.2(@earendil-works/pi-ai@0.75.3(ws@8.20.1)(zod@4.4.3))(@earendil-works/pi-coding-agent@0.75.3(ws@8.20.1)(zod@4.4.3))(@earendil-works/pi-tui@0.75.3)(typebox@1.1.38)
       minimatch:
         specifier: ^10.2.5
         version: 10.2.5
@@ -324,6 +327,23 @@ packages:
       '@modelcontextprotocol/sdk': ^1.25.2
     peerDependenciesMeta:
       '@modelcontextprotocol/sdk':
+        optional: true
+
+  '@juicesharp/rpiv-config@1.10.2':
+    resolution: {integrity: sha512-T2V9sY8E49qJ2P1SFe3h6xet8l3x26vkrDJkRsnyn1UH3g+LAiaFzAEyV0t/7AKwzlhlqOqjjnwqGyO/6ecU+g==}
+    peerDependencies:
+      typebox: '*'
+
+  '@juicesharp/rpiv-todo@1.10.2':
+    resolution: {integrity: sha512-ZMQuxlRtxE+1Nx+7Kut3o0u0kIQxE8rQoDdDRlhuDCu7dN7nwE5XY59S6A4T0JGczuJHFW74Up1jwdLwq61sCg==}
+    peerDependencies:
+      '@earendil-works/pi-ai': '*'
+      '@earendil-works/pi-coding-agent': '*'
+      '@earendil-works/pi-tui': '*'
+      '@juicesharp/rpiv-i18n': '*'
+      typebox: '*'
+    peerDependenciesMeta:
+      '@juicesharp/rpiv-i18n':
         optional: true
 
   '@mariozechner/clipboard-darwin-arm64@0.3.6':
@@ -1175,6 +1195,18 @@ snapshots:
       - bufferutil
       - supports-color
       - utf-8-validate
+
+  '@juicesharp/rpiv-config@1.10.2(typebox@1.1.38)':
+    dependencies:
+      typebox: 1.1.38
+
+  '@juicesharp/rpiv-todo@1.10.2(@earendil-works/pi-ai@0.75.3(ws@8.20.1)(zod@4.4.3))(@earendil-works/pi-coding-agent@0.75.3(ws@8.20.1)(zod@4.4.3))(@earendil-works/pi-tui@0.75.3)(typebox@1.1.38)':
+    dependencies:
+      '@earendil-works/pi-ai': 0.75.3(ws@8.20.1)(zod@4.4.3)
+      '@earendil-works/pi-coding-agent': 0.75.3(ws@8.20.1)(zod@4.4.3)
+      '@earendil-works/pi-tui': 0.75.3
+      '@juicesharp/rpiv-config': 1.10.2(typebox@1.1.38)
+      typebox: 1.1.38
 
   '@mariozechner/clipboard-darwin-arm64@0.3.6':
     optional: true
