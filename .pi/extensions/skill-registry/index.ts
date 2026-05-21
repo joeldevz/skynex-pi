@@ -27,6 +27,7 @@ import {
   isCacheValid,
   getSkillsForAgent as _getSkillsForAgent,
   buildPromptInjection as _buildPromptInjection,
+  shouldRefreshOnFile,
 } from "./registry.js";
 import {
   DEFAULT_REGISTRY_CONFIG,
@@ -59,6 +60,79 @@ let activeRegistry: SkillRegistry | undefined;
 let activeConfig: RegistryConfig = DEFAULT_REGISTRY_CONFIG;
 let activeCwd: string | undefined;
 
+// File watcher state
+let watcher: fs.FSWatcher | null = null;
+let debounceTimer: ReturnType<typeof setTimeout> | undefined;
+let piApi: ExtensionAPI | null = null;
+
+/**
+ * Rebuild the registry and notify the user if UI is available.
+ * Called on startup, on file changes, and on manual /skills:refresh command.
+ */
+function rebuildAndRefresh(cwd: string, ctx?: any): SkillRegistry {
+  const registry = buildRegistry(cwd, activeConfig);
+  saveCache(activeConfig.cache_path, cwd, registry);
+  activeRegistry = registry;
+
+  // Notify user of refresh
+  if (ctx?.hasUI && ctx?.ui?.notify) {
+    const count = Object.keys(registry.skills).length;
+    ctx.ui.notify(
+      `🔄 Skill registry refreshed: ${count} skill${count === 1 ? "" : "s"} loaded`,
+      "info",
+    );
+  }
+
+  // Refresh tools in the agent runtime if available
+  if (piApi && "refreshTools" in piApi && typeof piApi.refreshTools === "function") {
+    (piApi as any).refreshTools();
+  }
+
+  return registry;
+}
+
+/**
+ * Start watching for SKILL.md file changes in the .pi/skills directory.
+ */
+function startWatcher(cwd: string, ctx?: any): void {
+  const skillsDir = path.join(cwd, ".pi", "skills");
+  if (!fs.existsSync(skillsDir)) {
+    return; // No skills dir, don't start watcher
+  }
+
+  try {
+    watcher = fs.watch(skillsDir, { recursive: true }, (eventType, filename) => {
+      if (!shouldRefreshOnFile(filename)) return;
+
+      // Debounce: clear previous timer and set a new one
+      if (debounceTimer !== undefined) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        rebuildAndRefresh(cwd, ctx);
+        debounceTimer = undefined;
+      }, 300);
+    });
+
+    watcher.on("error", () => {
+      // Best-effort: silently ignore watcher errors
+      // (file system issues, permission denied, etc.)
+    });
+  } catch {
+    // If watch fails, continue without it (best-effort)
+  }
+}
+
+/**
+ * Stop the file watcher and clear any pending debounce timers.
+ */
+function stopWatcher(): void {
+  if (debounceTimer !== undefined) clearTimeout(debounceTimer);
+  debounceTimer = undefined;
+  if (watcher) {
+    watcher.close();
+    watcher = null;
+  }
+}
+
 function ensureRegistry(cwd: string, forceRebuild = false): SkillRegistry {
   activeConfig = loadConfig(cwd);
   activeCwd = cwd;
@@ -78,6 +152,8 @@ function ensureRegistry(cwd: string, forceRebuild = false): SkillRegistry {
 }
 
 export default function (pi: ExtensionAPI) {
+  piApi = pi;
+
   pi.on("session_start", async (_event, ctx) => {
     const registry = ensureRegistry(ctx.cwd);
     const count = Object.keys(registry.skills).length;
@@ -93,6 +169,13 @@ export default function (pi: ExtensionAPI) {
       }
       ctx.ui.notify(lines.join("\n"), exceeded > 0 ? "warning" : "info");
     }
+
+    // Start watching for SKILL.md file changes
+    startWatcher(ctx.cwd, ctx);
+  });
+
+  pi.on("session_shutdown", async () => {
+    stopWatcher();
   });
 
   // ── /skills:list ───────────────────────────────────────────────────────────
@@ -125,7 +208,9 @@ export default function (pi: ExtensionAPI) {
   pi.registerCommand("skills:refresh", {
     description: "Force rebuild of the skill registry (re-scan all locations)",
     handler: async (_args, ctx) => {
-      const registry = ensureRegistry(ctx.cwd, true);
+      activeConfig = loadConfig(ctx.cwd);
+      activeCwd = ctx.cwd;
+      const registry = rebuildAndRefresh(ctx.cwd, ctx);
       const count = Object.keys(registry.skills).length;
       ctx.ui.notify(
         `Registry rebuilt: ${count} skill${count === 1 ? "" : "s"} loaded\n` +
