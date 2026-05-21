@@ -92,10 +92,10 @@ function rebuildAndRefresh(cwd: string, ctx?: any): SkillRegistry {
 }
 
 /**
- * Start watching for SKILL.md file changes in the .pi/skills directory.
+ * Start watching for SKILL.md file changes in the skills directory.
  */
 function startWatcher(cwd: string, ctx?: any): void {
-  const skillsDir = path.join(cwd, ".pi", "skills");
+  const skillsDir = path.join(cwd, "skills");
   if (!fs.existsSync(skillsDir)) {
     return; // No skills dir, don't start watcher
   }
@@ -187,7 +187,7 @@ export default function (pi: ExtensionAPI) {
         a.name.localeCompare(b.name),
       );
       if (skills.length === 0) {
-        ctx.ui.notify("No skills loaded. Place SKILL.md files in .pi/skills/ or ~/.pi/agent/skills/", "warning");
+        ctx.ui.notify("No skills loaded. Place SKILL.md files in skills/ or ~/.pi/agent/skills/", "warning");
         return;
       }
       const lines = [`Skill Registry (${skills.length} skills)`, ""];

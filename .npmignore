@@ -1,0 +1,39 @@
+# Source control
+.git/
+.gitignore
+.gitattributes
+
+# Local development
+node_modules/
+.pi/npm/
+.pi/sessions/
+.pi/settings.json
+.pi/mcp.json
+.pi/prompts/
+
+# Runtime artifacts
+.skynex/
+*.log
+
+# Test artifacts
+tests/
+docs/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Workspace dirs that aren't shipped
+scripts/
+PLAN.md
+
+# Don't ship tests inside extensions/ (we want SOURCE only)
+extensions/**/*.test.ts
+
+# Don't ship development-only files
+pnpm-lock.yaml
+tsconfig.json

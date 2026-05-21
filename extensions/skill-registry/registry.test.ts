@@ -20,11 +20,11 @@ import {
 } from "./registry.js";
 import { DEFAULT_REGISTRY_CONFIG } from "./types.js";
 
-/** Create a temp project with a .pi/skills directory and N skills. */
+/** Create a temp project with a skills directory and N skills. */
 function makeTempProject(skills: Array<{ dir: string; content: string }>): string {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "skynex-skillreg-"));
   for (const { dir, content } of skills) {
-    const skillDir = path.join(tmp, ".pi", "skills", dir);
+    const skillDir = path.join(tmp, "skills", dir);
     fs.mkdirSync(skillDir, { recursive: true });
     fs.writeFileSync(path.join(skillDir, "SKILL.md"), content);
   }
@@ -66,7 +66,7 @@ ${Array.from({ length: 50 }, (_, i) => `${i + 1}. ${"a very long rule that takes
 
 // ─── buildRegistry ────────────────────────────────────────────────────────────
 
-test("build: discovers skills from .pi/skills directory", () => {
+test("build: discovers skills from skills directory", () => {
   const tmp = makeTempProject([
     { dir: "alpha", content: minimalSkill("alpha") },
     { dir: "beta", content: minimalSkill("beta") },
@@ -166,7 +166,7 @@ test("cache: invalid when source file modified", () => {
 
     // Modify the source file → cache should be stale
     fs.writeFileSync(
-      path.join(tmp, ".pi", "skills", "alpha", "SKILL.md"),
+      path.join(tmp, "skills", "alpha", "SKILL.md"),
       minimalSkill("alpha-modified"),
     );
 

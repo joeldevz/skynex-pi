@@ -27,7 +27,7 @@ subagent({
 })
 ```
 
-`confirmProjectAgents: false` skips the interactive "Run project-local agents?" dialog. This repo's `.pi/agents/*.md` are trusted, version-controlled, and reviewed via PR — confirming on every invocation is noise. Set to `true` only when running an unfamiliar repo.
+`confirmProjectAgents: false` skips the interactive "Run project-local agents?" dialog. This repo's `assets/agents/*.md` are trusted, version-controlled, and reviewed via PR — confirming on every invocation is noise. Set to `true` only when running an unfamiliar repo.
 
 The subagent tool returns the agent's full output. Look for the `\`\`\`yaml envelope` fenced block at the end.
 

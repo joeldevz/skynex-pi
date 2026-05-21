@@ -1,4 +1,4 @@
-# .pi/agents/
+# assets/agents/
 
 Sub-agent definitions for the skynex-pi Medium-path and Substantial-path workflows.
 
