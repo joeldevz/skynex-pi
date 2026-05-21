@@ -49,29 +49,13 @@ If `verifier_feedback` is present, read it BEFORE touching any file. Fix only wh
 
 ### Task tracking (todo tool)
 
-When executing a PLAN.md with 2+ steps or slices, use the `todo` tool to track progress:
+The `todo` tool is managed by the MAIN MODEL SESSION, not by you (the coder sub-agent).
 
-1. **At the start of your work**: create one todo per step/slice
-   ```
-   todo({ action: "create", subject: "Slice 1 — SAML foundation", description: "Add types.ts, config.ts, errors.ts" })
-   todo({ action: "create", subject: "Slice 2 — Strategy", description: "Implement SAMLStrategy", blockedBy: [1] })
-   ```
+- **Do NOT create todos** inside your execution — you run in a separate Pi process and your todo calls won't persist in the main session's overlay.
+- **Do NOT update todo status** — the main model tracks phase completion, not you.
+- **Your job**: execute the slice and return the envelope. The main model will mark your slice as completed after reading your envelope.
 
-2. **Before starting a step**: mark it in_progress with an activeForm
-   ```
-   todo({ action: "update", id: 1, status: "in_progress", activeForm: "Writing SAML types and config" })
-   ```
-
-3. **Immediately after completing a step** (tests pass, verifier green):
-   ```
-   todo({ action: "update", id: 1, status: "completed" })
-   ```
-
-4. **Never batch completions** — mark each step completed as it finishes, not all at the end.
-
-5. **If a step is blocked** by a missing dependency: mark it with `blockedBy` and explain in description.
-
-This lets the user see exactly what you're working on in the todo overlay, and lets the session survive /compact without losing track of which slices are done.
+If you see todo calls in your context, they were created by the main model before invoking you. You can READ them for context but never write them.
 
 ## HITL escalation (high-risk paths)
 

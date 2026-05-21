@@ -526,3 +526,43 @@ test("gate response: buildWorkflowHint returns undefined for gate_response", () 
   const hint = buildWorkflowHint(result);
   assert.equal(hint, undefined);
 });
+
+test("medium hint includes todo tool instructions", () => {
+  const prior = process.env.SKYNEX_HITL;
+  delete process.env.SKYNEX_HITL;
+  try {
+    const result = triage({ prompt: "agrega isValidEmail", cwd: "/tmp" }, cfg);
+    const hint = buildWorkflowHint(result);
+    assert.ok(hint, "hint should exist for medium path");
+    assert.match(hint, /todo.*action.*create/i);
+    assert.match(hint, /NEVER call todo from inside a sub-agent|not via sub-agent/i);
+  } finally {
+    if (prior !== undefined) process.env.SKYNEX_HITL = prior; else delete process.env.SKYNEX_HITL;
+  }
+});
+
+test("substantial hint includes todo tool with blockedBy chain", () => {
+  const prior = process.env.SKYNEX_HITL;
+  delete process.env.SKYNEX_HITL;
+  try {
+    const result = triage({ prompt: "rebuild auth para soportar SAML SSO", cwd: "/tmp" }, cfg);
+    const hint = buildWorkflowHint(result);
+    assert.ok(hint, "hint should exist for substantial path");
+    assert.match(hint, /blockedBy/);
+    assert.match(hint, /NEVER call todo from inside a sub-agent/i);
+  } finally {
+    if (prior !== undefined) process.env.SKYNEX_HITL = prior; else delete process.env.SKYNEX_HITL;
+  }
+});
+
+test("conversational hint does NOT include todo instructions", () => {
+  const result = triage({ prompt: "hola", cwd: "/tmp" }, cfg);
+  const hint = buildWorkflowHint(result);
+  assert.ok(!hint || !hint.includes("todo({action"), "conversational should not include todo instructions");
+});
+
+test("small hint does NOT include todo instructions", () => {
+  const result = triage({ prompt: "fix typo in README", cwd: "/tmp" }, cfg);
+  const hint = buildWorkflowHint(result);
+  assert.ok(!hint || !hint.includes("todo({action"), "small should not include todo instructions");
+});
