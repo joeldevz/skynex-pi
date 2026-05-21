@@ -18,7 +18,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { decideAction, formatStatusLine, formatTokens, formatBar, buildCheckpointContent } from "./calc.js";
-import { DEFAULT_SMART_ZONE_CONFIG, type SmartZoneConfig } from "./types.js";
+import { DEFAULT_SMART_ZONE_CONFIG, type SmartZoneConfig, calculateEffectiveThresholds } from "./types.js";
 import { getTriage } from "../triage/index.js";
 
 const CONFIG_PATH = ".skynex/smart-zone.json";
@@ -62,9 +62,15 @@ export default function (pi: ExtensionAPI) {
     sessionState.set(sid, { lastWarnedAt: 0, compactionInFlight: false });
 
     if (ctx.hasUI) {
+      // Get current contextWindow if available
+      const usage = ctx.getContextUsage();
+      const contextWindow = usage?.contextWindow ?? 128_000;
+      const { warning_threshold, hard_cap } = calculateEffectiveThresholds(cachedConfig, contextWindow);
+      const mode = cachedConfig.auto_detect ? "auto-detect" : "absolute";
+      
       ctx.ui.notify(
-        `🔋 Smart Zone active — warn at ${formatTokens(cachedConfig.warning_threshold)}, ` +
-        `auto-compact at ${formatTokens(cachedConfig.hard_cap)}`,
+        `🔋 Smart Zone active (${mode}) — warn at ${formatTokens(warning_threshold)} / ` +
+        `auto-compact at ${formatTokens(hard_cap)} (model: ${formatTokens(contextWindow)})`,
         "info",
       );
     }
@@ -77,18 +83,21 @@ export default function (pi: ExtensionAPI) {
     const usage = ctx.getContextUsage();
     if (!usage || usage.tokens === null) return; // unknown (e.g. right after compaction)
 
+    const contextWindow = usage.contextWindow ?? 128_000;
+    const { warning_threshold, hard_cap } = calculateEffectiveThresholds(config, contextWindow);
+
     const sid = ctx.sessionManager.getSessionFile() ?? `ephemeral-${process.pid}`;
     const state = getState(sid);
 
     // Update status bar regardless of action
     if (config.show_status_bar) {
-      ctx.ui.setStatus(STATUS_KEY, formatStatusLine(usage.tokens, config));
+      ctx.ui.setStatus(STATUS_KEY, formatStatusLine(usage.tokens, hard_cap));
     }
 
     // Skip decisions while compaction is in flight (would loop)
     if (state.compactionInFlight) return;
 
-    const decision = decideAction(usage.tokens, state.lastWarnedAt, config);
+    const decision = decideAction(usage.tokens, warning_threshold, hard_cap, state.lastWarnedAt, config.warning_step);
 
     if (decision.action === "warn") {
       state.lastWarnedAt = decision.threshold_crossed ?? usage.tokens;
@@ -97,10 +106,10 @@ export default function (pi: ExtensionAPI) {
        if (ctx.hasUI) {
          ctx.ui.notify(
            `⚠️  Smart Zone warning: ${formatTokens(usage.tokens)} tokens ` +
-           `(${decision.percent_of_cap}% of ${formatTokens(80_000)} cap)\n` +
+           `(${decision.percent_of_cap}% of ${formatTokens(hard_cap)} cap)\n` +
            `   Consider /compact soon. Save key decisions to Neurox first. ` +
            `If you're mid-workflow, note your current phase and step — ` +
-           `auto-compact at ${formatTokens(config.hard_cap)} will save a checkpoint to .skynex/workflow-checkpoint.md.`,
+           `auto-compact at ${formatTokens(hard_cap)} will save a checkpoint to .skynex/workflow-checkpoint.md.`,
            "warning",
          );
        }
@@ -113,7 +122,7 @@ export default function (pi: ExtensionAPI) {
       const triage = getTriage(sessionFile);
       const triageClassification = triage?.path;
       const checkpointPath = path.join(ctx.cwd, ".skynex", "workflow-checkpoint.md");
-      const checkpoint = buildCheckpointContent(usage.tokens, sessionFile, triageClassification);
+      const checkpoint = buildCheckpointContent(usage.tokens, hard_cap, sessionFile, triageClassification);
 
       try {
         fs.mkdirSync(path.dirname(checkpointPath), { recursive: true });
@@ -169,24 +178,29 @@ export default function (pi: ExtensionAPI) {
         return;
       }
 
-      const pct = Math.round((tokens / config.hard_cap) * 100);
+      const contextWindow = usage.contextWindow ?? 128_000;
+      const { warning_threshold, hard_cap } = calculateEffectiveThresholds(config, contextWindow);
+      const mode = config.auto_detect ? "auto-detect" : "absolute";
+
+      const pct = Math.round((tokens / hard_cap) * 100);
       const bar = formatBar(pct, 20);
       let status = "🟢 OK";
-      if (tokens >= config.hard_cap) status = "🔴 AT HARD CAP";
-      else if (tokens >= config.warning_threshold) status = "🟡 WARNING";
+      if (tokens >= hard_cap) status = "🔴 AT HARD CAP";
+      else if (tokens >= warning_threshold) status = "🟡 WARNING";
 
       const lines = [
         `Smart Zone — ${status}`,
         ``,
         bar,
         ``,
-        `Tokens used:       ${formatTokens(tokens)} (${tokens.toLocaleString()})`,
-        `Hard cap:          ${formatTokens(config.hard_cap)}`,
-        `Warning threshold: ${formatTokens(config.warning_threshold)}`,
-        `Context window:    ${formatTokens(usage.contextWindow)} (model's nominal)`,
+        `Tokens used:        ${formatTokens(tokens)} (${tokens.toLocaleString()})`,
+        `Mode:               ${mode}`,
+        `Model contextWindow: ${formatTokens(contextWindow)}`,
+        `Effective warning:  ${formatTokens(warning_threshold)} (${config.warning_percent * 100}%)`,
+        `Effective hard cap: ${formatTokens(hard_cap)} (${config.hard_cap_percent * 100}%)`,
         ``,
-        `Note: Smart Zone limits to ~100K regardless of nominal context window.`,
-        `      Beyond that, attention degrades quadratically.`,
+        `Note: With auto-detect, thresholds scale to your model's context window.`,
+        `      With absolute mode, thresholds are fixed regardless of context size.`,
       ];
       ctx.ui.notify(lines.join("\n"), "info");
     },
@@ -197,13 +211,30 @@ export default function (pi: ExtensionAPI) {
     description: "Show effective Smart Zone configuration",
     handler: async (_args, ctx) => {
       const config = cachedConfig ?? loadConfig(ctx.cwd);
+      const usage = ctx.getContextUsage();
+      const contextWindow = usage?.contextWindow ?? 128_000;
+      const { warning_threshold, hard_cap } = calculateEffectiveThresholds(config, contextWindow);
+      const mode = config.auto_detect ? "auto-detect" : "absolute";
+
       const lines = [
         `Smart Zone Config`,
         ``,
-        `warning_threshold: ${config.warning_threshold.toLocaleString()}`,
-        `hard_cap:          ${config.hard_cap.toLocaleString()}`,
-        `warning_step:      ${config.warning_step.toLocaleString()}`,
-        `show_status_bar:   ${config.show_status_bar}`,
+        `auto_detect:       ${config.auto_detect}`,
+        `Mode:              ${mode}`,
+        ``,
+        `Effective thresholds (contextWindow: ${formatTokens(contextWindow)}):`,
+        `  warning_threshold: ${warning_threshold.toLocaleString()} (${config.warning_percent * 100}%)`,
+        `  hard_cap:          ${hard_cap.toLocaleString()} (${config.hard_cap_percent * 100}%)`,
+        ``,
+        `Config values:`,
+        `  warning_percent:   ${config.warning_percent}`,
+        `  hard_cap_percent:  ${config.hard_cap_percent}`,
+        `  warning_step:      ${config.warning_step.toLocaleString()}`,
+        `  show_status_bar:   ${config.show_status_bar}`,
+        ``,
+        `Absolute fallback (when auto_detect=false):`,
+        `  warning_threshold: ${config.warning_threshold.toLocaleString()}`,
+        `  hard_cap:          ${config.hard_cap.toLocaleString()}`,
         ``,
         `compact_instructions:`,
         `  "${config.compact_instructions.slice(0, 100)}..."`,
