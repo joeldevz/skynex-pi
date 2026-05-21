@@ -14,6 +14,7 @@
     "@earendil-works/pi-coding-agent": "^0.75.3",
     "@juicesharp/rpiv-todo": "^1.10.2",
     "minimatch": "^10.2.5",
+    "pi-mcp-adapter": "^2.6.1",
     "pi-sub-agent": "^0.1.5",
     "pi-web-access": "^0.10.7",
     "typebox": "^1.1.38"

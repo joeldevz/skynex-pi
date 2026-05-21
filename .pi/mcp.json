@@ -1,0 +1,76 @@
+{
+  "_comment": "MCP servers for Pi via pi-mcp-adapter. Mirrors opencode.json MCP config. API keys/tokens are read from environment variables — never hardcoded. Run '/mcp' in Pi to check connection status.",
+
+  "settings": {
+    "toolPrefix": "short",
+    "idleTimeout": 10
+  },
+
+  "mcpServers": {
+    "atlassian": {
+      "url": "https://mcp.atlassian.com/v1/mcp",
+      "auth": "oauth",
+      "lifecycle": "lazy"
+    },
+
+    "neurox": {
+      "command": "neurox",
+      "args": ["mcp"],
+      "lifecycle": "keep-alive",
+      "directTools": true
+    },
+
+    "chrome-devtools": {
+      "command": "npx",
+      "args": ["-y", "chrome-devtools-mcp@0.23.0"],
+      "env": {
+        "CDP_URL": "${CDP_URL}",
+        "CHROME_PATH": "${CHROME_PATH}"
+      },
+      "lifecycle": "lazy"
+    },
+
+    "figma": {
+      "command": "npx",
+      "args": ["-y", "figma-developer-mcp@0.11.0", "--stdio"],
+      "env": {
+        "FIGMA_API_KEY": "${FIGMA_API_KEY}",
+        "DO_NOT_TRACK": "1",
+        "FRAMELINK_TELEMETRY": "false"
+      },
+      "lifecycle": "lazy"
+    },
+
+    "slack": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-slack"],
+      "env": {
+        "SLACK_BOT_TOKEN": "${SLACK_BOT_TOKEN}",
+        "SLACK_TEAM_ID": "${SLACK_TEAM_ID}"
+      },
+      "lifecycle": "lazy"
+    },
+
+    "cloudflare": {
+      "url": "https://mcp.cloudflare.com/mcp",
+      "auth": "oauth",
+      "lifecycle": "lazy"
+    },
+
+    "context7": {
+      "url": "https://mcp.context7.com/mcp",
+      "headers": {
+        "CONTEXT7_API_KEY": "${CONTEXT7_API_KEY}"
+      },
+      "lifecycle": "lazy"
+    },
+
+    "brevo": {
+      "url": "https://mcp.brevo.com/v1/brevo/mcp",
+      "headers": {
+        "Authorization": "${BREVO_API_KEY}"
+      },
+      "lifecycle": "lazy"
+    }
+  }
+}
