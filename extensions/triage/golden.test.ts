@@ -6,7 +6,7 @@ import { buildWorkflowHint } from "./index.js";
 import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 
-const REPO_ROOT = resolve(import.meta.dirname, "../../..");
+const REPO_ROOT = resolve(import.meta.dirname, "../..");
 
 // ─────────────────────────────────────────────────────────────────
 // Suite 1: Medium-path full wiring (4 tests)
@@ -103,9 +103,9 @@ test("golden substantial: hint includes all 6 phases in order", () => {
 
 test("golden substantial: product-planner, architect, archivist agents exist", () => {
   const agents = [
-    { name: "product-planner", file: ".pi/agents/product-planner.md" },
-    { name: "architect", file: ".pi/agents/architect.md" },
-    { name: "archivist", file: ".pi/agents/archivist.md" },
+    { name: "product-planner", file: "assets/agents/product-planner.md" },
+    { name: "architect", file: "assets/agents/architect.md" },
+    { name: "archivist", file: "assets/agents/archivist.md" },
   ];
   for (const agent of agents) {
     const p = resolve(REPO_ROOT, agent.file);
@@ -187,7 +187,7 @@ test("golden gate-response: 'cancel' does not inject hint", () => {
 // ─────────────────────────────────────────────────────────────────
 
 test("golden skill-map: no agent references an empty skill folder", async () => {
-  const skillsDir = resolve(REPO_ROOT, ".pi/skills");
+  const skillsDir = resolve(REPO_ROOT, "skills");
   const agentSkillMapImport = await import("../skill-registry/types.js");
   const agentSkillMap = agentSkillMapImport.DEFAULT_REGISTRY_CONFIG.agent_skill_map;
 

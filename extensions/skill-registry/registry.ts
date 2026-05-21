@@ -57,16 +57,19 @@ export function buildRegistry(
   cwd: string,
   config: RegistryConfig = DEFAULT_REGISTRY_CONFIG,
   agentDir: string = AGENT_DIR_GLOBAL_DEFAULT,
+  skillPaths?: string[],
 ): SkillRegistry {
   const diagnostics: string[] = [];
   const skills: Record<string, SkillEntry> = {};
 
   let discovered: Skill[];
   try {
+    // Build skill paths: explicit paths + project's skills directory + defaults
+    const paths = skillPaths ?? [path.join(cwd, "skills")];
     const result = loadSkills({
       cwd,
       agentDir,
-      skillPaths: [],
+      skillPaths: paths,
       includeDefaults: true,
     });
     discovered = result.skills;

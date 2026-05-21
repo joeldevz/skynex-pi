@@ -7,7 +7,7 @@ import { parseArchivistEnvelope, validateEnvelope, toSaveOperations, shouldArchi
 import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 
-const REPO_ROOT = resolve(import.meta.dirname, "../../..");
+const REPO_ROOT = resolve(import.meta.dirname, "../..");
 
 // ─────────────────────────────────────────────────────────────────
 // Suite 1: Substantial classification → 6-phase hint
@@ -105,7 +105,7 @@ test("golden: substantial hint mentions natural-language response keywords", () 
 
 // Suite 2: Skill registry agent_skill_map (note: moved to skill-registry test file)
 // The agent_skill_map lives in skill-registry/types.ts, not triage.
-// Tests are in .pi/extensions/skill-registry/registry.test.ts instead.
+// Tests are in extensions/skill-registry/registry.test.ts instead.
 // This placeholder ensures we don't lose track of the requirement.
 
 test("golden: skill-registry defines agent_skill_map with new agents", async () => {
@@ -211,7 +211,7 @@ test("golden: shouldArchive returns false for small", () => {
 // ─────────────────────────────────────────────────────────────────
 
 test("golden: propose SKILL.md exists with name+description frontmatter", () => {
-  const p = resolve(REPO_ROOT, ".pi/skills/propose/SKILL.md");
+  const p = resolve(REPO_ROOT, "skills/propose/SKILL.md");
   assert.ok(existsSync(p), `propose SKILL.md not found at ${p}`);
   const content = readFileSync(p, "utf8");
   assert.match(content, /^---\s*\n.*name:\s*propose/ms, "missing frontmatter with name: propose");
@@ -220,14 +220,14 @@ test("golden: propose SKILL.md exists with name+description frontmatter", () => 
 });
 
 test("golden: propose SKILL.md mentions SKYNEX_HITL env var", () => {
-  const p = resolve(REPO_ROOT, ".pi/skills/propose/SKILL.md");
+  const p = resolve(REPO_ROOT, "skills/propose/SKILL.md");
   const content = readFileSync(p, "utf8");
   assert.match(content, /SKYNEX_HITL/);
   assert.match(content, /AUTO-CONTINUE/i);
 });
 
 test("golden: specify SKILL.md exists with proper structure", () => {
-  const p = resolve(REPO_ROOT, ".pi/skills/specify/SKILL.md");
+  const p = resolve(REPO_ROOT, "skills/specify/SKILL.md");
   assert.ok(existsSync(p), `specify SKILL.md not found at ${p}`);
   const content = readFileSync(p, "utf8");
   assert.match(content, /name:\s*specify/m, "missing name: specify in frontmatter");
@@ -236,14 +236,14 @@ test("golden: specify SKILL.md exists with proper structure", () => {
 });
 
 test("golden: specify SKILL.md mentions SKYNEX_HITL env var", () => {
-  const p = resolve(REPO_ROOT, ".pi/skills/specify/SKILL.md");
+  const p = resolve(REPO_ROOT, "skills/specify/SKILL.md");
   const content = readFileSync(p, "utf8");
   assert.match(content, /SKYNEX_HITL/);
   assert.match(content, /AUTO-CONTINUE/i);
 });
 
 test("golden: product-planner.md exists with agent structure", () => {
-  const p = resolve(REPO_ROOT, ".pi/agents/product-planner.md");
+  const p = resolve(REPO_ROOT, "assets/agents/product-planner.md");
   assert.ok(existsSync(p), `product-planner.md not found at ${p}`);
   const content = readFileSync(p, "utf8");
   assert.match(content, /name:\s*product-planner/m, "wrong name in product-planner.md");
@@ -252,7 +252,7 @@ test("golden: product-planner.md exists with agent structure", () => {
 });
 
 test("golden: architect.md exists with agent structure", () => {
-  const p = resolve(REPO_ROOT, ".pi/agents/architect.md");
+  const p = resolve(REPO_ROOT, "assets/agents/architect.md");
   assert.ok(existsSync(p), `architect.md not found at ${p}`);
   const content = readFileSync(p, "utf8");
   assert.match(content, /name:\s*architect/m, "wrong name in architect.md");
@@ -261,7 +261,7 @@ test("golden: architect.md exists with agent structure", () => {
 });
 
 test("golden: archivist.md exists with agent structure", () => {
-  const p = resolve(REPO_ROOT, ".pi/agents/archivist.md");
+  const p = resolve(REPO_ROOT, "assets/agents/archivist.md");
   assert.ok(existsSync(p), `archivist.md not found at ${p}`);
   const content = readFileSync(p, "utf8");
   assert.match(content, /name:\s*archivist/m, "wrong name in archivist.md");
@@ -270,7 +270,7 @@ test("golden: archivist.md exists with agent structure", () => {
 });
 
 test("golden: plan SKILL.md mentions UNIFIED GATE and SKYNEX_HITL", () => {
-  const p = resolve(REPO_ROOT, ".pi/skills/plan/SKILL.md");
+  const p = resolve(REPO_ROOT, "skills/plan/SKILL.md");
   const content = readFileSync(p, "utf8");
   assert.match(content, /SKYNEX_HITL/);
   assert.match(content, /UNIFIED GATE|unified gate/i);
@@ -307,7 +307,7 @@ test("golden: medium path should_load_neurox is true", () => {
 });
 
 test("golden: research SKILL.md exists with Compact Rules", () => {
-  const p = resolve(REPO_ROOT, ".pi/skills/research/SKILL.md");
+  const p = resolve(REPO_ROOT, "skills/research/SKILL.md");
   assert.ok(existsSync(p), "research/SKILL.md must exist");
   const content = readFileSync(p, "utf8");
   assert.match(content, /name:\s*research/);
@@ -317,7 +317,7 @@ test("golden: research SKILL.md exists with Compact Rules", () => {
 });
 
 test("golden: scout.md includes web_search and fetch_content tools", () => {
-  const p = resolve(REPO_ROOT, ".pi/agents/scout.md");
+  const p = resolve(REPO_ROOT, "assets/agents/scout.md");
   const content = readFileSync(p, "utf8");
   assert.match(content, /web_search/);
   assert.match(content, /fetch_content/);

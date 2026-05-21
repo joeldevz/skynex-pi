@@ -20,7 +20,7 @@ This ensures that valuable decisions, patterns, and learnings from substantial w
 
 ## Sub-agent Invoked
 
-**`archivist` (`.pi/agents/archivist.md`)** — Reads session artifacts and outputs a structured envelope with:
+**`archivist` (`assets/agents/archivist.md`)** — Reads session artifacts and outputs a structured envelope with:
 - `session_summary` — goal, outcome, duration, cost
 - `observations_to_save` — list of Neurox observations (decision, discovery, bugfix, pattern, gotcha, config, preference)
 - `artifacts_archived` — list of `.skynex/<feature>/*.md` files created
