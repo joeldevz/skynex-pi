@@ -28,6 +28,16 @@ const AGENT_DIR_GLOBAL_DEFAULT = path.join(
   "agent",
 );
 
+/**
+ * Pure function to determine if a file change should trigger a registry refresh.
+ * Returns true if the filename ends with "SKILL.md".
+ * Handles null/undefined safely.
+ */
+export function shouldRefreshOnFile(filename: string | null | undefined): boolean {
+  if (!filename) return false;
+  return filename.endsWith("SKILL.md");
+}
+
 function getScopeFromSkill(skill: Skill, cwd: string): "user" | "project" | "unknown" {
   const abs = path.resolve(skill.filePath);
   if (abs.startsWith(path.resolve(cwd))) return "project";

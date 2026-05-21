@@ -16,6 +16,7 @@ import {
   isCacheValid,
   getSkillsForAgent,
   buildPromptInjection,
+  shouldRefreshOnFile,
 } from "./registry.js";
 import { DEFAULT_REGISTRY_CONFIG } from "./types.js";
 
@@ -291,10 +292,36 @@ test("agent-map: no entry references empty skill folders", () => {
       referencedSkills.add(skill);
     }
   }
-  const invalidRefs = Array.from(referencedSkills).filter((s) => emptySkills.has(s));
-  assert.equal(
-    invalidRefs.length,
-    0,
-    `Found references to empty skill folders: ${invalidRefs.join(", ")}`,
-  );
+   const invalidRefs = Array.from(referencedSkills).filter((s) => emptySkills.has(s));
+   assert.equal(
+     invalidRefs.length,
+     0,
+     `Found references to empty skill folders: ${invalidRefs.join(", ")}`,
+   );
+});
+
+// ─── shouldRefreshOnFile ──────────────────────────────────────────────────────
+
+test("shouldRefreshOnFile: 'SKILL.md' → true", () => {
+  assert.equal(shouldRefreshOnFile("SKILL.md"), true);
+});
+
+test("shouldRefreshOnFile: 'discover/SKILL.md' → true", () => {
+  assert.equal(shouldRefreshOnFile("discover/SKILL.md"), true);
+});
+
+test("shouldRefreshOnFile: 'propose/SKILL.md' → true", () => {
+  assert.equal(shouldRefreshOnFile("propose/SKILL.md"), true);
+});
+
+test("shouldRefreshOnFile: 'index.ts' → false", () => {
+  assert.equal(shouldRefreshOnFile("index.ts"), false);
+});
+
+test("shouldRefreshOnFile: 'README.md' → false", () => {
+  assert.equal(shouldRefreshOnFile("README.md"), false);
+});
+
+test("shouldRefreshOnFile: undefined → false", () => {
+  assert.equal(shouldRefreshOnFile(undefined), false);
 });
