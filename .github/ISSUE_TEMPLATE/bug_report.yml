@@ -1,0 +1,77 @@
+name: Bug report
+description: Report something that is broken
+title: "bug: "
+labels: ["type:bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Be specific — vague reports waste maintainer time.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: One sentence — what's broken
+      placeholder: "Workflow X fails when Y happens"
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Numbered steps. Include exact commands or inputs.
+      placeholder: |
+        1. Run `pi`
+        2. Type "rebuild auth para SAML SSO"
+        3. Wait for /skill:plan to invoke tech-planner
+        4. Observe...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should happen
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What actually happens. Include error messages, stack traces, or output.
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: |
+        - skynex-pi commit SHA (run `git log -1 --oneline`)
+        - Pi version (run `pi --version`)
+        - Node version (run `node --version`)
+        - OS (Linux/Mac/Windows + version)
+        - Model + provider (e.g., openai-codex/gpt-5.5)
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Additional context
+      description: Logs, screenshots, related issues, anything else
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-submission checks
+      options:
+        - label: I searched existing issues for duplicates
+          required: true
+        - label: I included enough info to reproduce (or explained why I can't)
+          required: true

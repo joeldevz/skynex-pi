@@ -1,0 +1,65 @@
+name: Feature request
+description: Suggest a new capability or enhancement
+title: "feat: "
+labels: ["type:feature"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before submitting, consider: does this fit skynex-pi's scope (Pi extensions, agent workflows, dev tooling)?
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the pain point. Be specific — "make it better" isn't enough.
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: What you'd like to see. Concrete examples preferred.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What other approaches you considered and why they don't fit
+    validations:
+      required: false
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Scope
+      description: What area does this touch?
+      options:
+        - Extension (new or modified)
+        - Sub-agent (new or modified)
+        - Skill (new or modified)
+        - Triage / workflow
+        - Documentation
+        - Tooling / CI
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Related issues, prior art, screenshots
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-submission checks
+      options:
+        - label: I searched existing issues for duplicates
+          required: true
+        - label: This fits skynex-pi's scope (not an unrelated tool)
+          required: true
