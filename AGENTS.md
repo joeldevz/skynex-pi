@@ -74,6 +74,7 @@ Neurox stores observations across MANY projects in different namespaces (e.g. `d
 - `neurox-tool` — gives you `neurox_recall`, `neurox_save`, `neurox_context`, `neurox_session_start`, `neurox_session_end`.
 - `production-gate` — blocks production-affecting commands (`kubectl apply`, `terraform apply`, `git push --force`, `npm publish`, `rm -rf /`, etc.) and requires typed confirmation.
 - `archive` — post-completion archival hook. Detects substantial-path sessions that reached the build phase and notifies the user to run `/archive:run`, which dispatches the archivist sub-agent to synthesize Neurox observations.
+- `rpiv-todo` (`@juicesharp/rpiv-todo`) — Live todo overlay + `todo` tool for the model. Tracks slice/step progress with state machine (pending → in_progress → completed). Survives /compact via branch replay. Use `/todos` to inspect current task list.
 
 ## How to interact with the production-gate (important)
 

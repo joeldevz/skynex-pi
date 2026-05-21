@@ -130,6 +130,7 @@ pnpm install
 pi install npm:pi-mcp-adapter
 pi install npm:pi-sub-agent
 pi install npm:pi-skillful
+pi install npm:@juicesharp/rpiv-todo
 
 # 5. Set env vars (see docs/setup-env.md when it exists)
 export ANTHROPIC_API_KEY=sk-ant-...

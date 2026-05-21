@@ -5,6 +5,7 @@
   ],
   "theme": "dark",
   "packages": [
-    "npm:pi-sub-agent"
+    "npm:pi-sub-agent",
+    "npm:@juicesharp/rpiv-todo"
   ]
 }
