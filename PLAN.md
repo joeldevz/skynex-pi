@@ -356,6 +356,139 @@ Benefits:
 
 ---
 
+## 🤔 Pending Discussion — Triage Classification Strategy
+
+> Added 2026-05-21. Surfaced by E2E feedback after 0.4.0.
+
+### The bug
+
+User asked `"puedes usar jira?"` (capability question about the agent).
+Triage classified it as **MEDIUM** because the word `jira` matched
+`risk_keywords`. Consequence: model called `neurox_session_start` and
+`neurox_recall` for an irrelevant context (payroll turnos), wasting
+tokens + adding noise.
+
+**Root cause**: `risk_keywords` matches on **topic nouns** (jira, auth,
+payment) regardless of whether there's any **intent to do work**.
+Capability questions get treated as risky tasks.
+
+### Research findings (skynex-pi context)
+
+Reviewed: gentle-pi (`isSddPreflightTrigger`), Anthropic "Building
+Effective Agents", Claude Code architecture, Pi ecosystem (rpiv,
+gentle, others).
+
+**Industry pattern**: Claude Code, Cursor, Aider do NOT pre-classify
+prompts. They hand the prompt to the model and let the model decide
+whether to use tools. Pre-classification is rare and brittle.
+
+Gentle-pi's `isSddPreflightTrigger` is the closest analog. Their
+documented stance:
+> "Natural-language requests are classified by the parent agent, not
+> by brittle runtime regexes."
+
+### Options evaluated
+
+| # | Approach | Hardcoded? | Cost | Drift |
+|---|---|---|---|---|
+| A | Add capability-question regex on top of existing classifier | Yes | 0ms | High (every new question pattern needs a regex) |
+| B | LLM intent classifier (Haiku call per prompt) | No | ~200ms + $0.0001 per prompt | None |
+| C | Remove implicit classification; delegate to model | N/A — no code | 0ms | None |
+| D | **Hybrid**: explicit triggers only (slash commands, code blocks, file paths). No keyword/verb classification. | Minimal | 0ms | Low |
+
+### The honest tradeoffs
+
+**Option A** is what I instinctively proposed. It IS hardcoded text.
+Patches one symptom (`puedes usar jira?`) but leaves the brittle
+keyword-matching logic in place. Will hit the same bug with new
+vocabulary in 6 months.
+
+**Option B** is "no hardcoded text" but introduces:
+- 200ms latency on every prompt
+- ~$0.0001 per prompt cost
+- Another point of failure (Haiku down → fallback to what?)
+- The classifier itself becomes a system to maintain
+
+**Option C** is what Claude Code does. Pure prompt → model decides.
+- Loses: auto-invocation of `/skill:discover` on imperative tasks
+- Gains: zero drift, zero false-positives, simpler codebase
+- User trade-off: must invoke skills explicitly (`/skill:build agrega
+  isValidEmail` instead of just `agrega isValidEmail`)
+
+**Option D (hybrid)** keeps the magic where it's safe:
+- Slash commands → workflow injection (clear intent)
+- Code blocks pasted → code-review skill hint (clear intent)
+- File paths in prompt → context hint (clear intent)
+- Everything else → no classification, model decides
+
+### Test matrix (10 cases)
+
+| Prompt | Truth | A (caps regex) | C (no classify) | D (hybrid) |
+|---|---|---|---|---|
+| `puedes usar jira?` | LIGHT | ✓ | ✓ | ✓ |
+| `qué archivos hay en src/?` | LIGHT | ✗ MEDIUM | ✓ | ✓ |
+| `¿podrías refactorizar UserService?` | MEDIUM | ✗ LIGHT | (model) | (model) |
+| `fix the auth bug in src/auth.ts` | HARD | ✗ MEDIUM | (model) | ✓ (file-path) |
+| `agrega isValidEmail con tests` | MEDIUM | ✗ LIGHT | (model) | (model) |
+| `hola` | LIGHT | ✓ | ✓ | ✓ |
+| `/skill:build add payment flow` | HARD | ✓ | (no skill invoked) | ✓ (slash) |
+| `mira esto: \`\`\`ts...\`\`\`` | MEDIUM | ✗ LIGHT | (model) | ✓ (code-block) |
+| `rebuild auth para SAML SSO` | HARD | (matches `auth`) | (model) | (model) |
+| `tweak the migration` | MEDIUM | ✗ LIGHT | (model) | (model) |
+
+Note for C and D: "(model)" means the model receives the raw prompt
+without a workflow hint. The model can still decide to use skills —
+it just won't be auto-injected.
+
+### What's NOT decided
+
+1. **Which option ships?** Each has real tradeoffs. None is "obviously
+   correct" without testing on real traffic.
+2. **Telemetry first?** Log every triage decision for 2 weeks (signals
+   + reason + outcome). Then decide based on data, not intuition.
+3. **Behavioral change risk**: changing default behavior breaks user
+   muscle memory. Need version bump signaling + deprecation.
+4. **Backwards compat**: do we keep `auto_detect`-style env var for
+   power users who want the keyword classifier?
+
+### Decision parking
+
+This is a non-trivial design decision. **Not changing anything until**:
+
+- [ ] Telemetry added (log triage decisions for ≥2 weeks)
+- [ ] Real false-positive count measured (not just the one example)
+- [ ] Real false-negative count measured (tasks that would now be
+      missed if classifier removed)
+- [ ] User confirmation that workflow auto-invocation is/isn't valued
+
+Until then: current behavior stays (default MEDIUM with keyword
+matching). User aware of the false-positive on capability questions
+and can ignore Neurox dumps or rephrase prompts as needed.
+
+### Suggested next sprint (when this is tackled)
+
+1. Add `logTriageDecision()` to `extensions/triage/index.ts` — write
+   to `.skynex/triage-decisions.jsonl` (gitignored)
+2. Run for 2 weeks of normal usage
+3. Analyze the log: signal distribution, false-positive rate, missed
+   tasks
+4. Choose option based on data
+5. Bump to 0.6.0 if behavioral change
+6. Document migration in CHANGELOG
+
+### Why this is parked, not done
+
+The user asked: "puedes hacerlo?" My instinct was to patch quickly
+(Option A). On reflection, the patch would have replaced one brittle
+regex with another, with the same drift problem in a few months.
+Better to surface the design question, gather real data, and decide
+based on evidence.
+
+The bug is annoying but not blocking — current users (just me) can
+adapt prompts.
+
+---
+
 ## References
 
 - Main branch: `8d143fc` (HEAD)
