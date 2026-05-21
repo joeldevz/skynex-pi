@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@earendil-works/pi-tui':
+        specifier: '*'
+        version: 0.75.3
       minimatch:
         specifier: ^10.2.5
         version: 10.2.5
