@@ -63,8 +63,9 @@ test("golden medium: medium path sets TDD enforced", () => {
 // ─────────────────────────────────────────────────────────────────
 
 test("golden substantial: 'rebuild auth para soportar SAML SSO' classifies as substantial", () => {
+  // OPTION D: risk keywords alone don't promote. Use cross-cutting pattern.
   const result = triage(
-    { prompt: "rebuild auth para soportar SAML SSO", cwd: "/tmp" },
+    { prompt: "rebuild auth para soportar SAML SSO across all modules", cwd: "/tmp" },
     DEFAULT_TRIAGE_CONFIG
   );
   assert.equal(result.path, "substantial");
@@ -75,10 +76,12 @@ test("golden substantial: hint includes all 6 phases in order", () => {
   const prior = process.env.SKYNEX_HITL;
   delete process.env.SKYNEX_HITL; // unset to test default mode
   try {
+    // OPTION D: use cross-cutting pattern
     const result = triage(
-      { prompt: "rebuild auth para soportar SAML SSO", cwd: "/tmp" },
+      { prompt: "rebuild auth para soportar SAML SSO across all modules", cwd: "/tmp" },
       DEFAULT_TRIAGE_CONFIG
     );
+    assert.equal(result.path, "substantial");
     const hint = buildWorkflowHint(result);
     assert.ok(hint, "hint must not be undefined for substantial");
     const phases = [
@@ -241,8 +244,9 @@ test("golden skill-map: substantial-path agents have correct mappings", async ()
 // ─────────────────────────────────────────────────────────────────
 
 test("golden subagent: triage() on substantial+risk task returns has_risk_keywords=true", () => {
+  // OPTION D: use cross-cutting pattern to trigger substantial
   const result = triage(
-    { prompt: "rebuild auth para soportar SAML SSO", cwd: "/tmp" },
+    { prompt: "rebuild auth para soportar SAML SSO across all modules", cwd: "/tmp" },
     DEFAULT_TRIAGE_CONFIG
   );
   assert.equal(result.path, "substantial", "must classify as substantial");

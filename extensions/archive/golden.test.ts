@@ -14,12 +14,15 @@ const REPO_ROOT = resolve(import.meta.dirname, "../..");
 // ─────────────────────────────────────────────────────────────────
 
 test("golden: 'rebuild auth for SAML SSO' classifies as substantial", () => {
-  const result = triage({ prompt: "rebuild auth for SAML SSO", cwd: "/tmp" }, DEFAULT_TRIAGE_CONFIG);
+  // OPTION D: risk keywords no longer promote. Use cross-cutting pattern.
+  const result = triage({ prompt: "rebuild auth for SAML SSO across all modules", cwd: "/tmp" }, DEFAULT_TRIAGE_CONFIG);
   assert.equal(result.path, "substantial");
 });
 
 test("golden: substantial hint includes all 6 phases in order", () => {
-  const result = triage({ prompt: "rebuild auth for SAML SSO", cwd: "/tmp" }, DEFAULT_TRIAGE_CONFIG);
+  // OPTION D: use cross-cutting pattern
+  const result = triage({ prompt: "rebuild auth for SAML SSO across all modules", cwd: "/tmp" }, DEFAULT_TRIAGE_CONFIG);
+  assert.equal(result.path, "substantial");
   const hint = buildWorkflowHint(result);
   assert.ok(hint, "hint must not be undefined");
   const phases = ["/skill:discover", "/skill:propose", "/skill:specify", "/skill:plan", "/skill:build", "/skill:validate"];
@@ -32,7 +35,9 @@ test("golden: substantial hint includes all 6 phases in order", () => {
 });
 
 test("golden: substantial hint references archive + archivist", () => {
-  const result = triage({ prompt: "rebuild auth for SAML SSO", cwd: "/tmp" }, DEFAULT_TRIAGE_CONFIG);
+  // OPTION D: use cross-cutting pattern
+  const result = triage({ prompt: "rebuild auth for SAML SSO across all modules", cwd: "/tmp" }, DEFAULT_TRIAGE_CONFIG);
+  assert.equal(result.path, "substantial");
   const hint = buildWorkflowHint(result);
   assert.ok(hint, "hint must not be undefined");
   assert.ok(hint!.includes("archive"), "missing archive reference in hint");
@@ -43,7 +48,9 @@ test("golden: substantial hint in default mode mentions UNIFIED GATE at step 4",
   const prior = process.env.SKYNEX_HITL;
   delete process.env.SKYNEX_HITL;
   try {
-    const result = triage({ prompt: "rebuild auth for SAML SSO", cwd: "/tmp" }, DEFAULT_TRIAGE_CONFIG);
+    // OPTION D: use cross-cutting pattern
+    const result = triage({ prompt: "rebuild auth for SAML SSO across all modules", cwd: "/tmp" }, DEFAULT_TRIAGE_CONFIG);
+    assert.equal(result.path, "substantial");
     const hint = buildWorkflowHint(result);
     assert.ok(hint, "hint must not be undefined");
     assert.match(hint!, /SINGLE HITL gate/);
@@ -58,7 +65,9 @@ test("golden: substantial hint in strict mode mentions 3 gates", () => {
   const prior = process.env.SKYNEX_HITL;
   process.env.SKYNEX_HITL = "strict";
   try {
-    const result = triage({ prompt: "rebuild auth for SAML SSO", cwd: "/tmp" }, DEFAULT_TRIAGE_CONFIG);
+    // OPTION D: use cross-cutting pattern
+    const result = triage({ prompt: "rebuild auth for SAML SSO across all modules", cwd: "/tmp" }, DEFAULT_TRIAGE_CONFIG);
+    assert.equal(result.path, "substantial");
     const hint = buildWorkflowHint(result);
     assert.ok(hint, "hint must not be undefined");
     assert.match(hint!, /steps 2, 3, 4/);
@@ -72,7 +81,9 @@ test("golden: substantial hint in none mode mentions escape hatch", () => {
   const prior = process.env.SKYNEX_HITL;
   process.env.SKYNEX_HITL = "none";
   try {
-    const result = triage({ prompt: "rebuild auth for SAML SSO", cwd: "/tmp" }, DEFAULT_TRIAGE_CONFIG);
+    // OPTION D: use cross-cutting pattern
+    const result = triage({ prompt: "rebuild auth for SAML SSO across all modules", cwd: "/tmp" }, DEFAULT_TRIAGE_CONFIG);
+    assert.equal(result.path, "substantial");
     const hint = buildWorkflowHint(result);
     assert.ok(hint, "hint must not be undefined");
     assert.match(hint!, /NO HITL gates|escape hatch/i);
@@ -86,7 +97,9 @@ test("golden: substantial hint mentions natural-language response keywords", () 
   const prior = process.env.SKYNEX_HITL;
   delete process.env.SKYNEX_HITL;
   try {
-    const result = triage({ prompt: "rebuild auth for SAML SSO", cwd: "/tmp" }, DEFAULT_TRIAGE_CONFIG);
+    // OPTION D: use cross-cutting pattern
+    const result = triage({ prompt: "rebuild auth for SAML SSO across all modules", cwd: "/tmp" }, DEFAULT_TRIAGE_CONFIG);
+    assert.equal(result.path, "substantial");
     const hint = buildWorkflowHint(result);
     assert.ok(hint, "hint must not be undefined");
     assert.match(hint!, /dale|approve/);
@@ -281,12 +294,14 @@ test("golden: plan SKILL.md mentions UNIFIED GATE and SKYNEX_HITL", () => {
 // ─────────────────────────────────────────────────────────────────
 
 test("golden: 'auth' keyword alone triggers substantial", () => {
-  const result = triage({ prompt: "add auth", cwd: "/tmp" }, DEFAULT_TRIAGE_CONFIG);
+  // OPTION D: risk keywords no longer promote. Use cross-cutting pattern.
+  const result = triage({ prompt: "add auth across all modules", cwd: "/tmp" }, DEFAULT_TRIAGE_CONFIG);
   assert.equal(result.path, "substantial");
 });
 
 test("golden: migration keywords trigger substantial", () => {
-  const result = triage({ prompt: "migrate from postgres to mongodb", cwd: "/tmp" }, DEFAULT_TRIAGE_CONFIG);
+  // OPTION D: risk keywords no longer promote. Use cross-cutting pattern.
+  const result = triage({ prompt: "migrate from postgres to mongodb across all services", cwd: "/tmp" }, DEFAULT_TRIAGE_CONFIG);
   assert.equal(result.path, "substantial");
 });
 
@@ -296,12 +311,15 @@ test("golden: 'fix typo' stays small", () => {
 });
 
 test("golden: substantial path sets TDD enforced", () => {
-  const result = triage({ prompt: "rebuild auth for SAML SSO", cwd: "/tmp" }, DEFAULT_TRIAGE_CONFIG);
+  // OPTION D: use cross-cutting pattern
+  const result = triage({ prompt: "rebuild auth for SAML SSO across all modules", cwd: "/tmp" }, DEFAULT_TRIAGE_CONFIG);
   assert.equal(result.tdd, true, "TDD must be enforced for substantial");
 });
 
 test("golden: medium path should_load_neurox is true", () => {
-  const result = triage({ prompt: "add pagination to user list endpoint", cwd: "/tmp" }, DEFAULT_TRIAGE_CONFIG);
+  // OPTION D: "add pagination" is now small. Use a medium example.
+  const result = triage({ prompt: "add pagination to user list endpoint with tests", cwd: "/tmp" }, DEFAULT_TRIAGE_CONFIG);
+  assert.equal(result.path, "medium");
   // medium path should load neurox for context
   assert.equal(result.should_load_neurox, true, "medium path must load neurox");
 });

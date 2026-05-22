@@ -23,11 +23,11 @@ function tri(prompt: string) {
 // ─── SMALL PATH ──────────────────────────────────────────────────────────────
 
 test("small: rename in one file (non-risk module)", () => {
-  // Using src/users/ not src/auth/ — auth is a risk keyword and would promote.
-  // This is intentional design: anything touching auth deserves substantial scrutiny.
+  // OPTION D: file path now triggers medium (Rule 6), not small.
+  // This is intentional: file paths are structural signals.
   const r = tri("rename getUser to getCurrentUser in src/users/service.ts");
-  assert.equal(r.path, "small");
-  assert.match(r.reason, /trivial|short concrete/);
+  assert.equal(r.path, "medium");
+  assert.match(r.reason, /file path detected/);
 });
 
 test("small: fix typo", () => {
@@ -36,40 +36,46 @@ test("small: fix typo", () => {
 });
 
 test("small: format file", () => {
+  // OPTION D: file path triggers medium now
   const r = tri("format src/utils/date.ts");
-  assert.equal(r.path, "small");
+  assert.equal(r.path, "medium");
 });
 
 test("small: short request with one file", () => {
+  // OPTION D: file path triggers medium
   const r = tri("update the import in src/index.ts");
-  assert.equal(r.path, "small");
+  assert.equal(r.path, "medium");
 });
 
 // ─── MEDIUM PATH ─────────────────────────────────────────────────────────────
 
 test("medium: add pagination (clear, single module)", () => {
+  // OPTION D: no structural signals → default small. Model sees the task intent.
   const r = tri("add pagination to the GET /orders endpoint in the orders module");
-  assert.equal(r.path, "medium");
+  assert.equal(r.path, "small");
 });
 
 test("medium: fix bug with no risk keywords", () => {
+  // OPTION D: no structural signals → default small
   const r = tri("fix the bug where users with no avatar see undefined in the profile screen");
-  assert.equal(r.path, "medium");
+  assert.equal(r.path, "small");
 });
 
 test("medium: default for unrecognized requests", () => {
+  // OPTION D: no structural signals → default small (Rule 10)
   const r = tri("implement an email validator");
-  assert.equal(r.path, "medium");
+  assert.equal(r.path, "small");
 });
 
 // ─── TDD INTENT → MEDIUM (Rule 3.5) ──────────────────────────────────────────
 
 test("medium: explicit 'TDD' keyword promotes from small to medium", () => {
-  // Without 'TDD' this would match Rule 5 (short + single file) → small.
-  // With 'TDD' it must promote to medium.
+  // File path is detected first (Rule 6), so reason will be "file path detected" not "TDD intent".
+  // But path is still medium due to file path + TDD combo.
   const r = tri("add isValidEmail in src/utils/email.ts with TDD");
   assert.equal(r.path, "medium");
-  assert.match(r.reason, /TDD intent/i);
+  // Either file path or TDD is acceptable; file path is checked first
+  assert.ok(r.reason.match(/file path|TDD intent/i));
 });
 
 test("medium: 'con tests' (Spanish) promotes to medium", () => {
@@ -107,15 +113,15 @@ test("medium: 'agrega' verb + new file path is medium", () => {
 });
 
 test("small: 'fix' verb + existing file stays small", () => {
-  // 'fix' is editing intent, NOT create intent.
+  // OPTION D: file path triggers medium (Rule 6)
   const r = tri("fix the import in src/index.ts");
-  assert.equal(r.path, "small");
+  assert.equal(r.path, "medium");
 });
 
 test("small: 'update' verb + existing file stays small", () => {
-  // 'update' is editing intent, NOT create intent (regression guard).
+  // OPTION D: file path triggers medium (Rule 6)
   const r = tri("update the import in src/index.ts");
-  assert.equal(r.path, "small");
+  assert.equal(r.path, "medium");
 });
 
 test("medium: 'debug' verb + single file promotes to medium (investigation)", () => {
@@ -159,19 +165,25 @@ test("medium: 'cómo' (Spanish accented) does not break tokenization", () => {
 // ─── SUBSTANTIAL PATH ────────────────────────────────────────────────────────
 
 test("substantial: auth keyword promotes to substantial", () => {
+  // OPTION D: risk keywords no longer promote path. File path triggers medium (Rule 6).
+  // But has_risk_keywords is still true.
   const r = tri("rename a function in src/auth/service.ts");
-  assert.equal(r.path, "substantial");
+  assert.equal(r.path, "medium");
   assert.ok(r.has_risk_keywords);
 });
 
 test("substantial: payment keyword", () => {
+  // OPTION D: risk keywords no longer promote. No structural signals → small.
   const r = tri("update the payment status field");
-  assert.equal(r.path, "substantial");
+  assert.equal(r.path, "small");
+  assert.ok(r.has_risk_keywords);
 });
 
 test("substantial: migration keyword", () => {
+  // OPTION D: risk keywords no longer promote → small. has_risk_keywords still set.
   const r = tri("add a migration for the new column");
-  assert.equal(r.path, "substantial");
+  assert.equal(r.path, "small");
+  assert.ok(r.has_risk_keywords);
 });
 
 test("substantial: cross-cutting language", () => {
@@ -186,14 +198,19 @@ test("substantial: ambiguous request with 3+ vague terms", () => {
 });
 
 test("substantial: SSO / SAML triggers risk keyword", () => {
+  // OPTION D: risk keywords no longer promote → small. But has_risk_keywords=true is visible.
   const r = tri("add SAML SSO support");
-  assert.equal(r.path, "substantial");
+  assert.equal(r.path, "small");
+  assert.ok(r.has_risk_keywords);
 });
 
 // ─── TDD FLAG ────────────────────────────────────────────────────────────────
 
 test("tdd: true for medium path", () => {
-  const r = tri("add pagination to GET /orders");
+  // OPTION D: "add pagination" is now small (no structural signals).
+  // tdd is still true for medium paths. Let's check a medium-path example.
+  const r = tri("add pagination to GET /orders with tests TDD");
+  assert.equal(r.path, "medium");
   assert.equal(r.tdd, true);
 });
 
@@ -271,9 +288,10 @@ test("conv: greeting + task word stays as task (not conversational)", () => {
 });
 
 test("conv: greeting + file mention stays as task", () => {
+  // OPTION D: file path + greeting. File path is NOT conversational (Rule 1 checks !hasFilePath).
+  // So it's not conversational. Risk keywords no longer promote, so it's medium (file path).
   const r = tri("hola, mira src/auth/service.ts");
-  // auth is risk keyword → substantial
-  assert.equal(r.path, "substantial");
+  assert.equal(r.path, "medium");
 });
 
 test("conv: long prompt without task signals still NOT conversational (no match)", () => {
@@ -286,12 +304,17 @@ test("conv: long prompt without task signals still NOT conversational (no match)
 // ─── should_load_neurox flag ─────────────────────────────────────────────────
 
 test("neurox: should_load_neurox true for medium", () => {
-  const r = tri("add pagination to GET /orders");
+  // OPTION D: "add pagination" is now small, so neurox=false.
+  // Use a medium-path prompt instead.
+  const r = tri("add pagination to GET /orders with tests");
+  assert.equal(r.path, "medium");
   assert.equal(r.should_load_neurox, true);
 });
 
 test("neurox: should_load_neurox true for substantial", () => {
-  const r = tri("rebuild auth with SAML");
+  // OPTION D: risk keywords no longer promote. Use cross-cutting pattern for substantial.
+  const r = tri("rebuild auth across all modules with SAML");
+  assert.equal(r.path, "substantial");
   assert.equal(r.should_load_neurox, true);
 });
 
@@ -311,9 +334,10 @@ test("neurox: explicit search intent forces should_load_neurox=true even for sho
 
 // ─── EDGE CASES ──────────────────────────────────────────────────────────────
 
-test("edge: empty prompt defaults to medium", () => {
+test("edge: empty prompt defaults to small", () => {
+  // OPTION D: default changed to small (Rule 10)
   const r = tri("");
-  assert.equal(r.path, "medium");
+  assert.equal(r.path, "small");
 });
 
 test("edge: very long ambiguous prompt promotes to substantial", () => {
@@ -358,14 +382,18 @@ test("structure: result has all required fields", () => {
 // ─── WORKFLOW HINT TESTS (Sprint 3 substantial path) ─────────────────────────
 
 test("substantial hint: includes /skill:propose", () => {
-  const r = tri("rebuild auth to support SAML SSO");
+  // OPTION D: use cross-cutting pattern to trigger substantial
+  const r = tri("rebuild auth to support SAML SSO across all modules");
+  assert.equal(r.path, "substantial");
   const hint = buildWorkflowHint(r);
   assert.ok(hint);
   assert.match(hint, /\/skill:propose/);
 });
 
 test("substantial hint: includes /skill:specify", () => {
-  const r = tri("rebuild auth to support SAML SSO");
+  // OPTION D: use cross-cutting pattern
+  const r = tri("rebuild auth to support SAML SSO across all modules");
+  assert.equal(r.path, "substantial");
   const hint = buildWorkflowHint(r);
   assert.ok(hint);
   assert.match(hint, /\/skill:specify/);
@@ -375,7 +403,9 @@ test("substantial hint: mentions UNIFIED GATE at step 4 in default mode", () => 
   const prior = process.env.SKYNEX_HITL;
   delete process.env.SKYNEX_HITL;
   try {
-    const r = tri("rebuild auth to support SAML SSO");
+    // OPTION D: use cross-cutting pattern for substantial
+    const r = tri("rebuild auth to support SAML SSO across all modules");
+    assert.equal(r.path, "substantial");
     const hint = buildWorkflowHint(r);
     assert.ok(hint);
     assert.match(hint, /UNIFIED GATE/);
@@ -388,7 +418,9 @@ test("substantial hint: mentions UNIFIED GATE at step 4 in default mode", () => 
 });
 
 test("substantial hint: mentions archive extension and archivist", () => {
-  const r = tri("rebuild auth to support SAML SSO");
+  // OPTION D: use cross-cutting pattern
+  const r = tri("rebuild auth to support SAML SSO across all modules");
+  assert.equal(r.path, "substantial");
   const hint = buildWorkflowHint(r);
   assert.ok(hint);
   assert.match(hint, /archive extension/);
@@ -399,12 +431,15 @@ test("substantial hint: default mode mentions 'single' gate", () => {
   const prior = process.env.SKYNEX_HITL;
   delete process.env.SKYNEX_HITL;
   try {
-    const r = tri("rebuild auth to support SAML SSO");
+    // OPTION D: use cross-cutting pattern
+    const r = tri("rebuild auth to support SAML SSO across all modules");
+    assert.equal(r.path, "substantial");
     const hint = buildWorkflowHint(r);
     assert.ok(hint);
     assert.match(hint, /SINGLE HITL gate/);
   } finally {
     if (prior !== undefined) process.env.SKYNEX_HITL = prior;
+    else delete process.env.SKYNEX_HITL;
   }
 });
 
@@ -412,7 +447,9 @@ test("substantial hint: strict mode mentions 3 gates", () => {
   const prior = process.env.SKYNEX_HITL;
   process.env.SKYNEX_HITL = "strict";
   try {
-    const r = tri("rebuild auth to support SAML SSO");
+    // OPTION D: use cross-cutting pattern
+    const r = tri("rebuild auth to support SAML SSO across all modules");
+    assert.equal(r.path, "substantial");
     const hint = buildWorkflowHint(r);
     assert.ok(hint);
     assert.match(hint, /steps 2, 3, 4.*strict/i);
@@ -426,7 +463,9 @@ test("substantial hint: none mode mentions escape hatch", () => {
   const prior = process.env.SKYNEX_HITL;
   process.env.SKYNEX_HITL = "none";
   try {
-    const r = tri("rebuild auth to support SAML SSO");
+    // OPTION D: use cross-cutting pattern
+    const r = tri("rebuild auth to support SAML SSO across all modules");
+    assert.equal(r.path, "substantial");
     const hint = buildWorkflowHint(r);
     assert.ok(hint);
     assert.match(hint, /escape hatch/);
@@ -438,7 +477,9 @@ test("substantial hint: none mode mentions escape hatch", () => {
 });
 
 test("substantial hint: mentions natural-language responses", () => {
-  const r = tri("rebuild auth to support SAML SSO");
+  // OPTION D: use cross-cutting pattern
+  const r = tri("rebuild auth to support SAML SSO across all modules");
+  assert.equal(r.path, "substantial");
   const hint = buildWorkflowHint(r);
   assert.ok(hint);
   // Check for keywords from the natural-language section
@@ -448,7 +489,9 @@ test("substantial hint: mentions natural-language responses", () => {
 });
 
 test("medium hint: unchanged (no /skill:propose or /skill:specify)", () => {
-  const r = tri("add pagination to GET /orders");
+  // OPTION D: "add pagination" is now small. Use a medium example.
+  const r = tri("add pagination to GET /orders with tests");
+  assert.equal(r.path, "medium");
   const hint = buildWorkflowHint(r);
   assert.ok(hint);
   assert.match(hint, /medium-path/);
@@ -531,7 +574,9 @@ test("medium hint includes todo tool instructions", () => {
   const prior = process.env.SKYNEX_HITL;
   delete process.env.SKYNEX_HITL;
   try {
-    const result = triage({ prompt: "agrega isValidEmail", cwd: "/tmp" }, cfg);
+    // OPTION D: "agrega isValidEmail" is now small. Use a medium example.
+    const result = triage({ prompt: "agrega isValidEmail with tests", cwd: "/tmp" }, cfg);
+    assert.equal(result.path, "medium");
     const hint = buildWorkflowHint(result);
     assert.ok(hint, "hint should exist for medium path");
     assert.match(hint, /todo.*action.*create/i);
@@ -545,7 +590,9 @@ test("substantial hint includes todo tool with blockedBy chain", () => {
   const prior = process.env.SKYNEX_HITL;
   delete process.env.SKYNEX_HITL;
   try {
-    const result = triage({ prompt: "rebuild auth para soportar SAML SSO", cwd: "/tmp" }, cfg);
+    // OPTION D: use cross-cutting pattern
+    const result = triage({ prompt: "rebuild auth para soportar SAML SSO across all modules", cwd: "/tmp" }, cfg);
+    assert.equal(result.path, "substantial");
     const hint = buildWorkflowHint(result);
     assert.ok(hint, "hint should exist for substantial path");
     assert.match(hint, /blockedBy/);
@@ -565,4 +612,38 @@ test("small hint does NOT include todo instructions", () => {
   const result = triage({ prompt: "fix typo in README", cwd: "/tmp" }, cfg);
   const hint = buildWorkflowHint(result);
   assert.ok(!hint || !hint.includes("todo({action"), "small should not include todo instructions");
+});
+
+// ── Option D regression: capability questions must NOT promote path ──────────
+
+test("capability question 'puedes usar jira?' is NOT medium/substantial", () => {
+  const result = triage({ prompt: "puedes usar jira?", cwd: "/tmp" }, cfg);
+  assert.ok(
+    result.path === "conversational" || result.path === "small",
+    `expected conversational or small, got ${result.path}`,
+  );
+});
+
+test("capability question 'puedes usar jira?' has_risk_keywords false", () => {
+  const result = triage({ prompt: "puedes usar jira?", cwd: "/tmp" }, cfg);
+  assert.equal(result.has_risk_keywords, false, "jira alone should not set risk flag");
+});
+
+test("risk keyword alone does not promote path (Option D)", () => {
+  const result = triage({ prompt: "rebuild auth para SAML SSO", cwd: "/tmp" }, cfg);
+  assert.ok(
+    result.path === "small" || result.path === "medium",
+    `risk keyword alone must not force substantial, got ${result.path}`,
+  );
+});
+
+test("file path promotes to medium (Option D)", () => {
+  const result = triage({ prompt: "fix auth bug in src/auth.ts", cwd: "/tmp" }, cfg);
+  assert.equal(result.path, "medium", "file path in prompt should promote to medium");
+  assert.equal(result.has_risk_keywords, true, "auth keyword should still flag risk");
+});
+
+test("cross-cutting pattern still reaches substantial (Option D)", () => {
+  const result = triage({ prompt: "refactor everything across all modules and services", cwd: "/tmp" }, cfg);
+  assert.equal(result.path, "substantial", "cross-cutting pattern must still be substantial");
 });
