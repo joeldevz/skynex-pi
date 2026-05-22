@@ -205,6 +205,67 @@ export default function (pi: ExtensionAPI) {
     return undefined;
   });
 
+  pi.on("tool_call", async (event, ctx) => {
+    // Only intercept `subagent` tool calls; skip everything else
+    if (event.toolName !== "subagent") {
+      return undefined;
+    }
+
+    // Extract task from subagent arguments
+    const args = event.input as { task?: string };
+    const task = args.task;
+    if (!task || typeof task !== "string") {
+      return undefined; // No task string, let it through
+    }
+
+    // Run triage on the task
+    const config = cachedConfig ?? loadConfig(ctx.cwd);
+    const result = triage({ prompt: task, cwd: ctx.cwd }, config);
+
+    // Block if substantial + risk keywords detected
+    if (result.path === "substantial" && result.has_risk_keywords) {
+      const taskSnippet = task.length > 120 ? task.slice(0, 120) + "…" : task;
+      const warningMessage = [
+        "⚠ Triage intercepted sub-agent task — SUBSTANTIAL + risk keywords detected",
+        `  Task: "${taskSnippet}"`,
+        `  Reason: ${result.reason}`,
+        `  Risk signals: ${result.signals.join(", ")}`,
+        "",
+        "The main agent must classify this task first. Ask the user directly instead of delegating to a sub-agent.",
+      ].join("\n");
+
+      if (ctx.hasUI) {
+        ctx.ui.notify(warningMessage, "warning");
+      }
+
+      return {
+        block: true,
+        reason: `Triage intercepted substantial + risk task in subagent: ${result.reason}`,
+      };
+    }
+
+    // Warn if substantial but no risk keywords (proceed but warn)
+    if (result.path === "substantial" && !result.has_risk_keywords) {
+      const taskSnippet = task.length > 120 ? task.slice(0, 120) + "…" : task;
+      const warnMessage = [
+        "⚠ Triage: sub-agent task classified as SUBSTANTIAL",
+        `  Task: "${taskSnippet}"`,
+        `  Reason: ${result.reason}`,
+        "",
+        "Proceeding — no risk keywords. Consider running /skill:discover first.",
+      ].join("\n");
+
+      if (ctx.hasUI) {
+        ctx.ui.notify(warnMessage, "warning");
+      }
+
+      return undefined; // Don't block, just warn
+    }
+
+    // All other paths (small/medium/conversational) are transparent
+    return undefined;
+  });
+
   pi.on("session_shutdown", async (_event, ctx) => {
     const sessionId =
       ctx.sessionManager.getSessionFile() ?? `ephemeral-${process.pid}`;

@@ -235,3 +235,34 @@ test("golden skill-map: substantial-path agents have correct mappings", async ()
     "archivist should map to empty array"
   );
 });
+
+// ─────────────────────────────────────────────────────────────────
+// Suite 6: Sub-agent tool_call hook (3 tests)
+// ─────────────────────────────────────────────────────────────────
+
+test("golden subagent: triage() on substantial+risk task returns has_risk_keywords=true", () => {
+  const result = triage(
+    { prompt: "rebuild auth para soportar SAML SSO", cwd: "/tmp" },
+    DEFAULT_TRIAGE_CONFIG
+  );
+  assert.equal(result.path, "substantial", "must classify as substantial");
+  assert.equal(result.has_risk_keywords, true, "must detect risk keywords (auth, saml, sso)");
+});
+
+test("golden subagent: triage() on substantial without risk returns has_risk_keywords=false", () => {
+  const result = triage(
+    { prompt: "refactor everything across all modules and services", cwd: "/tmp" },
+    DEFAULT_TRIAGE_CONFIG
+  );
+  assert.equal(result.path, "substantial", "must classify as substantial (cross-cutting)");
+  assert.equal(result.has_risk_keywords, false, "must not detect risk keywords");
+});
+
+test("golden subagent: triage() on small task for subagent is transparent", () => {
+  const result = triage(
+    { prompt: "fix typo in README", cwd: "/tmp" },
+    DEFAULT_TRIAGE_CONFIG
+  );
+  assert.equal(result.path, "small", "must classify as small");
+  assert.equal(result.has_risk_keywords, false, "no risk keywords for trivial task");
+});
