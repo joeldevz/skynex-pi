@@ -99,10 +99,15 @@ export const DEFAULT_IRON_LAW_CONFIG: IronLawConfig = {
   ],
 
   test_path_rules: [
-    // src/foo/bar.ts → src/foo/bar.test.ts
+    // src/foo/bar.ts → src/foo/bar.test.ts (default)
     {
       match: "^(.+)\\.(ts|tsx|js|jsx|go|py)$",
       test_path: "$1.test.$2",
+    },
+    // src/foo/bar.ts → src/foo/bar.spec.ts (NestJS pattern)
+    {
+      match: "^(.+)\\.(ts|tsx|js|jsx)$",
+      test_path: "$1.spec.$2",
     },
   ],
 

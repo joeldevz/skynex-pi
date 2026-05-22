@@ -26,7 +26,15 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { execSync } from "node:child_process";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { isWhitelisted, isProductionCode, inferTestPath, normalizePath } from "./matcher.js";
+import {
+  isWhitelisted,
+  isProductionCode,
+  inferTestPath,
+  inferTestPaths,
+  findExistingTestPath,
+  normalizePath,
+} from "./matcher.js";
+import { detectTestFileTampering } from "./tamper-detector.js";
 import { DEFAULT_IRON_LAW_CONFIG, type IronLawConfig, type IronLawState } from "./types.js";
 
 const CONFIG_PATH = ".skynex/iron-law.json";
@@ -98,10 +106,64 @@ function appendOverrideLog(
   fs.appendFileSync(logPath, entry);
 }
 
+function appendIntegrityLog(
+  cwd: string,
+  sessionId: string,
+  command: string,
+  pattern: string,
+): void {
+  const dir = path.join(cwd, ".skynex");
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  const logPath = path.join(dir, "iron-law-integrity.md");
+  const entry = `| ${new Date().toISOString()} | ${sessionId.slice(-8)} | ${pattern} | \`${command.replace(/\|/g, "\\|").slice(0, 80)}\` |\n`;
+  if (!fs.existsSync(logPath)) {
+    fs.writeFileSync(logPath, "# Iron Law Integrity Violations\n\nDetected attempts to bypass TDD enforcement via test file tampering.\n\n| When | Session | Pattern | Command |\n|------|---------|---------|----------|\n");
+  }
+  fs.appendFileSync(logPath, entry);
+}
+
 // Session-keyed state
 const sessionStateStore = new Map<string, IronLawState>();
 // Files overridden this session (key = sessionId:filePath)
 const overrideStore = new Set<string>();
+
+interface SessionStatePersist {
+  parent_session_id: string;
+  written_this_session: string[];
+  overrides: string[];
+  updated_at: string;
+}
+
+function saveSessionStatePersist(cwd: string, sessionId: string, state: IronLawState): void {
+  const dir = path.join(cwd, ".skynex");
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  const filePath = path.join(dir, "iron-law-session-state.json");
+  const persist: SessionStatePersist = {
+    parent_session_id: sessionId,
+    written_this_session: Array.from(state.written_this_session),
+    overrides: state.overrides.map((o) => o.file),
+    updated_at: new Date().toISOString(),
+  };
+  try {
+    fs.writeFileSync(filePath, JSON.stringify(persist, null, 2));
+  } catch {
+    // Ignore write errors — not critical
+  }
+}
+
+function loadSessionStatePersist(cwd: string): SessionStatePersist | undefined {
+  const filePath = path.join(cwd, ".skynex", "iron-law-session-state.json");
+  if (!fs.existsSync(filePath)) return undefined;
+  try {
+    const data = JSON.parse(fs.readFileSync(filePath, "utf-8")) as SessionStatePersist;
+    // Check if state is stale (> 10 minutes old)
+    const age = Date.now() - new Date(data.updated_at).getTime();
+    if (age > 10 * 60 * 1000) return undefined; // Stale
+    return data;
+  } catch {
+    return undefined; // Malformed, ignore
+  }
+}
 
 export default function (pi: ExtensionAPI) {
   let cachedConfig: IronLawConfig | undefined;
@@ -109,7 +171,19 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_start", async (_event, ctx) => {
     cachedConfig = loadConfig(ctx.cwd);
     const sid = ctx.sessionManager.getSessionFile() ?? `ephemeral-${process.pid}`;
-    sessionStateStore.set(sid, { written_this_session: new Set(), overrides: [] });
+    
+    // Try to load persisted state from parent session (Fix #3)
+    const persisted = loadSessionStatePersist(ctx.cwd);
+    if (persisted && persisted.parent_session_id !== sid) {
+      // Sub-agent or continuation: inherit parent's state
+      sessionStateStore.set(sid, {
+        written_this_session: new Set(persisted.written_this_session),
+        overrides: persisted.overrides.map((file) => ({ file, reason: "inherited", ts: persisted.updated_at, session: persisted.parent_session_id })),
+      });
+    } else {
+      // Fresh session
+      sessionStateStore.set(sid, { written_this_session: new Set(), overrides: [] });
+    }
   });
 
   pi.on("tool_call", async (event, ctx) => {
@@ -118,6 +192,38 @@ export default function (pi: ExtensionAPI) {
 
     const sid = ctx.sessionManager.getSessionFile() ?? `ephemeral-${process.pid}`;
     const state = sessionStateStore.get(sid) ?? { written_this_session: new Set(), overrides: [] };
+
+    // ── Bash tamper detection (Fix #2) ──────────────────────────────────────
+    if (event.toolName === "bash") {
+      const command = (event.input as { command?: string }).command ?? "";
+      const tamper = detectTestFileTampering(command);
+      if (tamper.matched) {
+        appendIntegrityLog(ctx.cwd, sid, command, tamper.pattern);
+        if (ctx.hasUI) {
+          ctx.ui.notify(
+            `🔴 Iron Law Integrity: Test file tampering detected\n` +
+            `   Pattern: ${tamper.pattern}\n` +
+            `   Command: ${command}\n` +
+            `   This pattern was used to bypass TDD enforcement.\n` +
+            `   Logged in .skynex/iron-law-integrity.md`,
+            "warning",
+          );
+        }
+        return {
+          block: true,
+          reason: `❌❌❌ BASH BLOCKED — COMMAND NOT EXECUTED ❌❌❌\n\nIron Law integrity: cannot ${tamper.pattern}. This pattern was used to bypass TDD enforcement.\nUse /iron-law:override if you have a legitimate reason.\n\n⚠️ The command above was NOT executed.`,
+        };
+      }
+    }
+
+    // ── Subagent invocation: save state for child process (Fix #3) ───────────
+    if (event.toolName === "subagent") {
+      const currentState = sessionStateStore.get(sid);
+      if (currentState) {
+        saveSessionStatePersist(ctx.cwd, sid, currentState);
+      }
+      return undefined;
+    }
 
     // ── Only care about write and edit ──────────────────────────────────────
     if (event.toolName !== "write" && event.toolName !== "edit") return undefined;
@@ -162,34 +268,32 @@ export default function (pi: ExtensionAPI) {
           }
           return {
             block: true,
-            reason: `Iron Law L4: ${relPath} tests are currently passing. Cannot modify a passing test. Use /iron-law:override to document the reason.`,
+            reason: `❌❌❌ EDIT BLOCKED — FILE NOT MODIFIED ❌❌❌\n\nIron Law L4: ${relPath} tests are currently passing. Cannot modify a passing test. Use /iron-law:override to document the reason.\n\n⚠️ The content above was NOT written to disk.`,
           };
         }
       }
       // Test is failing or new — allow the edit, track it
       state.written_this_session.add(relPath);
       sessionStateStore.set(sid, state);
+      saveSessionStatePersist(ctx.cwd, sid, state); // Fix #3: persist state
       return undefined;
     }
 
     // ── Only apply Iron Law to production code ──────────────────────────────
     if (!isProductionCode(relPath, config)) return undefined;
 
-    // ── Infer test path ─────────────────────────────────────────────────────
-    const testPath = inferTestPath(relPath, config.test_path_rules);
-    if (!testPath) return undefined; // No test path rule → skip (conservative)
+    // ── Infer all test paths (support .test.ts AND .spec.ts) ──────────────────
+    const testPaths = inferTestPaths(relPath, config.test_path_rules);
+    if (testPaths.length === 0) return undefined; // No test path rule → skip (conservative)
 
-    const absTestPath = path.isAbsolute(testPath)
-      ? testPath
-      : path.join(ctx.cwd, testPath);
-
-    // ── RULE 1: Test file must exist ────────────────────────────────────────
-    if (!fs.existsSync(absTestPath)) {
+    // ── RULE 1: Test file must exist (check ANY candidate) ──────────────────
+    const existingTestPath = findExistingTestPath(relPath, config.test_path_rules, ctx.cwd);
+    if (!existingTestPath) {
       if (ctx.hasUI) {
         ctx.ui.notify(
           `🔴 Iron Law: Missing test file\n` +
           `   Source: ${relPath}\n` +
-          `   Expected: ${testPath}\n` +
+          `   Expected one of: ${testPaths.join(", ")}\n` +
           `   Write the test first, make it fail, then implement.\n` +
           `   To override: /iron-law:override "${relPath}"`,
           "warning",
@@ -197,23 +301,23 @@ export default function (pi: ExtensionAPI) {
       }
       return {
         block: true,
-        reason: `Iron Law L4: No test file found at ${testPath}. Write a failing test first, then implement.`,
+        reason: `❌❌❌ WRITE BLOCKED — FILE NOT MODIFIED ❌❌❌\n\nIron Law L4: No test file found. Expected one of: ${testPaths.join(", ")}\nWrite a failing test first, then implement.\n\n⚠️ The content above was NOT written to disk.`,
       };
     }
 
     // Test file exists. Was it just written this session?
-    const testWrittenThisSession = state.written_this_session.has(testPath);
+    const testWrittenThisSession = state.written_this_session.has(existingTestPath);
 
     // ── RULE 2: Test must fail before writing impl ──────────────────────────
     if (!testWrittenThisSession) {
       // Pre-existing test — run it to see if it's already green
-      const result = runTestFile(testPath, ctx.cwd);
+      const result = runTestFile(existingTestPath, ctx.cwd);
       if (result.ran && !result.failed) {
         if (ctx.hasUI) {
           ctx.ui.notify(
             `🔴 Iron Law: Test already passing\n` +
             `   Source: ${relPath}\n` +
-            `   Test:   ${testPath}\n` +
+            `   Test:   ${existingTestPath}\n` +
             `   Tests are GREEN but you haven't touched the impl yet.\n` +
             `   Either delete the impl and write a new failing test, or\n` +
             `   add a test for the NEW behavior you're adding.\n` +
@@ -223,7 +327,7 @@ export default function (pi: ExtensionAPI) {
         }
         return {
           block: true,
-          reason: `Iron Law L4: ${testPath} is already passing. Add a failing test for the new behavior before implementing.`,
+          reason: `❌❌❌ WRITE BLOCKED — FILE NOT MODIFIED ❌❌❌\n\nIron Law L4: ${existingTestPath} is already passing. Add a failing test for the new behavior before implementing.\n\n⚠️ The content above was NOT written to disk.`,
         };
       }
     }
@@ -232,6 +336,7 @@ export default function (pi: ExtensionAPI) {
     // ── Allow — track that we wrote this production file ────────────────────
     state.written_this_session.add(relPath);
     sessionStateStore.set(sid, state);
+    saveSessionStatePersist(ctx.cwd, sid, state); // Fix #3: persist state
     return undefined;
   });
 

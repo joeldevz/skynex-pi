@@ -9,6 +9,7 @@
  * Uses minimatch for glob matching — same library Pi itself uses.
  */
 
+import * as fs from "node:fs";
 import * as path from "node:path";
 import { minimatch } from "minimatch";
 import type { IronLawConfig, TestPathRule } from "./types.js";
@@ -67,6 +68,54 @@ export function inferTestPath(
       }
     }
     return testPath;
+  }
+  return undefined;
+}
+
+/**
+ * Derives ALL possible test file paths from a production file path,
+ * using all matching rules in config.test_path_rules.
+ *
+ * Returns array of paths (may be empty if no rules match).
+ */
+export function inferTestPaths(
+  relPath: string,
+  rules: readonly TestPathRule[],
+): string[] {
+  const paths: string[] = [];
+  for (const rule of rules) {
+    const re = new RegExp(rule.match);
+    const match = relPath.match(re);
+    if (!match) continue;
+
+    let testPath = rule.test_path;
+    for (let i = 1; i < match.length; i++) {
+      if (match[i] !== undefined) {
+        testPath = testPath.replaceAll(`$${i}`, match[i]);
+      }
+    }
+    paths.push(testPath);
+  }
+  return paths;
+}
+
+/**
+ * Checks which test paths exist on disk and returns the first one found.
+ * Returns undefined if no candidate paths exist.
+ */
+export function findExistingTestPath(
+  relPath: string,
+  rules: readonly TestPathRule[],
+  cwd: string,
+): string | undefined {
+  const candidates = inferTestPaths(relPath, rules);
+  for (const candidate of candidates) {
+    const absPath = path.isAbsolute(candidate)
+      ? candidate
+      : path.join(cwd, candidate);
+    if (fs.existsSync(absPath)) {
+      return candidate;
+    }
   }
   return undefined;
 }
