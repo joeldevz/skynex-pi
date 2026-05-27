@@ -56,8 +56,9 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test extensions/**/*.test.ts",
+    "test": "tsx --test $(find extensions -name '*.test.ts' ! -path '*/test-harness/*' | tr '\\n' ' ')",
     "test:triage": "tsx --test extensions/triage/rules.test.ts",
+    "test:integration": "tsx --test extensions/test-harness/*.integration.test.ts",
     "doctor": "bash scripts/doctor.sh",
     "start": "bash scripts/start.sh",
     "verify-package": "node scripts/verify-package-files.mjs",

@@ -25,6 +25,8 @@ import {
   SessionManager,
   SettingsManager,
   DefaultResourceLoader,
+  AuthStorage,
+  ModelRegistry,
   type ExtensionFactory,
 } from "@earendil-works/pi-coding-agent";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
@@ -48,6 +50,8 @@ export interface HarnessResult {
   toolsCalled: string[];
   filesModified: string[];
   assistantText: string;
+  eventLog: string[];
+  modelUsed?: string;
 }
 
 /** Options for runExtensionTest */
@@ -58,6 +62,7 @@ export interface RunExtensionTestOptions {
   setupFiles?: Record<string, string>;
   timeout?: number;
   keepCwd?: boolean;
+  model?: string;
 }
 
 /**
@@ -125,8 +130,9 @@ export async function runExtensionTest(
     extensionFactories,
     prompt,
     setupFiles = {},
-    timeout = 30_000,
+    timeout = 60_000,
     keepCwd = false,
+    model = "opencode-go/deepseek-v4-flash",
   } = options;
 
   // Create or use provided cwd
@@ -162,8 +168,30 @@ export async function runExtensionTest(
     });
     await loader.reload();
 
-    // Create session
+    // Initialize auth storage and model registry
+    const authStorage = AuthStorage.create();
+    const modelRegistry = ModelRegistry.create(authStorage);
+    const available = modelRegistry.getAvailable();
+
+    // Resolve model
+    const [provider, ...modelIdParts] = model.split("/");
+    const modelId = modelIdParts.join("/");
+    const selectedModel = modelRegistry.find(provider, modelId);
+
+    if (!selectedModel) {
+      const availableStr = available
+        .map((m) => `${m.provider}/${m.id}`)
+        .join(", ");
+      throw new Error(
+        `Model not found: ${model}. Available: ${availableStr}`,
+      );
+    }
+
+    // Create session with real model
     const { session } = await createAgentSession({
+      model: selectedModel,
+      authStorage,
+      modelRegistry,
       sessionManager: SessionManager.inMemory(),
       settingsManager: SettingsManager.inMemory({
         compaction: { enabled: false },
@@ -174,6 +202,7 @@ export async function runExtensionTest(
 
     // Capture events
     const events: CapturedEvent[] = [];
+    const eventLog: string[] = [];
     let toolsCalled: string[] = [];
     let assistantText = "";
     let blocked = false;
@@ -188,6 +217,11 @@ export async function runExtensionTest(
         timestamp,
       });
 
+      // Log events for debugging
+      const toolName = (event as any).toolName || "";
+      const content = String((event as any).content || "").slice(0, 100);
+      eventLog.push(`${event.type}:${toolName}:${content}`);
+
       // Track tools that were executed
       // Note: AgentSessionEvent types vary; we check for known patterns
       if (event.type === "tool_execution_start" || event.type === "turn_start") {
@@ -198,6 +232,46 @@ export async function runExtensionTest(
         const toolName = toolEvent.toolName || toolEvent.name;
         if (toolName && !toolsCalled.includes(toolName)) {
           toolsCalled.push(toolName);
+        }
+      }
+
+      // Detect blocking signals
+      if (event.type === "tool_execution_end") {
+        const toolEvent = event as any;
+        if (toolEvent.isError) {
+          const eventContent = String(toolEvent.content || "");
+          if (
+            eventContent.includes("❌❌❌ WRITE BLOCKED") ||
+            eventContent.includes("Iron Law") ||
+            eventContent.includes("Production gate") ||
+            eventContent.includes("afk_behavior") ||
+            eventContent.includes("Blocked by") ||
+            eventContent.includes("blocked") ||
+            eventContent.includes("BLOCKED")
+          ) {
+            blocked = true;
+            blockedTool = toolEvent.toolName;
+            blockReason = eventContent;
+          }
+        }
+      }
+
+      // Also detect blocks from error-looking messages in message_end events
+      if (
+        event.type === "message_end" &&
+        !blocked
+      ) {
+        const msgEvent = event as any;
+        const content = String(msgEvent.message?.content || "");
+        if (
+          content.includes("❌❌❌") ||
+          content.includes("Iron Law") ||
+          content.includes("Production gate") ||
+          content.includes("blocked by") ||
+          content.includes("BLOCKED")
+        ) {
+          blocked = true;
+          blockReason = content;
         }
       }
 
@@ -247,6 +321,8 @@ export async function runExtensionTest(
       toolsCalled,
       filesModified,
       assistantText,
+      eventLog,
+      modelUsed: `${provider}/${modelId}`,
     };
   } finally {
     // Cleanup temp directory if we created it and not keeping it
