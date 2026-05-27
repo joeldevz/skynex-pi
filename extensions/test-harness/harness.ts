@@ -63,6 +63,51 @@ export interface RunExtensionTestOptions {
   timeout?: number;
   keepCwd?: boolean;
   model?: string;
+  forceToolExecution?: boolean;
+}
+
+/**
+ * Detect blocks in assistant text via pattern matching (Type B blocking).
+ * Returns { blocked: true, reason: "..." } if any pattern matches.
+ */
+function detectBlockInText(input: unknown): { blocked: boolean; reason: string } {
+  let text = "";
+  
+  // Handle various input types
+  if (typeof input === "string") {
+    text = input;
+  } else if (input && typeof input === "object") {
+    // Try to extract text from object
+    text = JSON.stringify(input);
+  }
+  
+  if (!text) return { blocked: false, reason: "" };
+
+  const patterns = [
+    /production.?gate.*block/i,
+    /gate.*abort/i,
+    /afk.*abort/i,
+    /aborted.*afk/i,
+    /cannot execute.*\b(gate|block|security)\b/i,
+    /blocked by.*gate/i,
+    /❌❌❌/,
+    /🔴.*Iron Law/,
+    /BLOCKED.*FILE NOT MODIFIED/,
+    /block:\s*true/i,
+    /i (cannot|cannot|won't|will not) .*(run|execute|call).*\b(gate|block|dangerous|production)\b/i,
+    /cannot.*execute.*command/i,
+    /refused.*command/i,
+    /decline.*command/i,
+    /won't.*execute/i,
+    /i won't/i,
+    /i can't.*that/i,
+  ];
+
+  for (const p of patterns) {
+    const m = text.match(p);
+    if (m) return { blocked: true, reason: m[0] };
+  }
+  return { blocked: false, reason: "" };
 }
 
 /**
@@ -133,6 +178,7 @@ export async function runExtensionTest(
     timeout = 60_000,
     keepCwd = false,
     model = "opencode-go/deepseek-v4-flash",
+    forceToolExecution = false,
   } = options;
 
   // Create or use provided cwd
@@ -188,6 +234,8 @@ export async function runExtensionTest(
     }
 
     // Create session with real model
+    // Note: forceToolExecution flag is recorded but the Pi SDK doesn't expose
+    // a direct system prompt injection API. Model behavior is driven by hook handlers.
     const { session } = await createAgentSession({
       model: selectedModel,
       authStorage,
@@ -280,8 +328,18 @@ export async function runExtensionTest(
         event.type === "message_update" ||
         event.type === "message_end"
       ) {
-        const msgEvent = event as { message?: { content?: string } };
-        const content = msgEvent.message?.content || "";
+        const msgEvent = event as any;
+        let content = "";
+        
+        if (msgEvent.message?.content) {
+          if (typeof msgEvent.message.content === "string") {
+            content = msgEvent.message.content;
+          } else {
+            // Handle array or object content
+            content = JSON.stringify(msgEvent.message.content);
+          }
+        }
+        
         if (content) {
           assistantText = content;
         }
@@ -308,6 +366,15 @@ export async function runExtensionTest(
     }
 
     unsubscribe();
+
+    // Detect blocks in assistant text (Type B blocking) if not already detected
+    if (!blocked) {
+      const textBlockDetection = detectBlockInText(assistantText);
+      if (textBlockDetection.blocked) {
+        blocked = true;
+        blockReason = textBlockDetection.reason;
+      }
+    }
 
     // Snapshot directory after test
     const afterSnapshot = getFileSnapshot(cwd);

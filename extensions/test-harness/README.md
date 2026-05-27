@@ -140,18 +140,25 @@ These patterns are set by extensions when they intercept unsafe operations.
 ### Structure
 
 - **harness.test.ts** — Core harness infrastructure tests (6 fast tests, <500ms)
-- **iron-law.integration.test.ts** — Iron Law extension compatibility tests
-- **production-gate.integration.test.ts** — Production Gate extension compatibility tests
+- **iron-law.integration.test.ts** — Iron Law extension compatibility tests (LLM-based)
+- **production-gate.integration.test.ts** — Production Gate extension compatibility tests (LLM-based)
+- **dangerous-commands.integration.test.ts** — NEW: 12 tests verifying production-gate blocks dangerous commands (kubectl, terraform, migrations, npm publish, rm -rf, DROP TABLE, etc.) with real LLM
+- **workflow-invocation.integration.test.ts** — NEW: 7 tests verifying extensions fire and invoke correctly (triage classification, iron-law TDD blocks, multi-extension stacking)
 
 ### Running Tests
 
 ```bash
-# Fast unit tests (no LLM calls)
-pnpm test extensions/test-harness/
+# Fast unit tests (no LLM calls) — <1 second total
+pnpm test
 
-# Full integration tests (requires ANTHROPIC_API_KEY)
-export ANTHROPIC_API_KEY="..."
-pnpm test extensions/test-harness/iron-law.integration.test.ts
+# Dangerous commands integration tests (requires ANTHROPIC_API_KEY) — ~6-10 min
+pnpm exec tsx --test extensions/test-harness/dangerous-commands.integration.test.ts
+
+# Workflow invocation integration tests (requires ANTHROPIC_API_KEY) — ~3-6 min
+pnpm exec tsx --test extensions/test-harness/workflow-invocation.integration.test.ts
+
+# All integration tests together (requires ANTHROPIC_API_KEY) — ~10-15 min
+pnpm exec tsx --test "extensions/test-harness/*.integration.test.ts"
 ```
 
 ### Why Simplified Tests?
@@ -193,13 +200,15 @@ test('my-extension: blocks unsafe operation', async () => {
 
 ## Files
 
-| File | Purpose |
-|------|---------|
-| `harness.ts` | Core harness implementation (200 lines) |
-| `harness.test.ts` | Harness infrastructure tests |
-| `iron-law.integration.test.ts` | Iron Law compatibility tests |
-| `production-gate.integration.test.ts` | Production Gate compatibility tests |
-| `README.md` | This file |
+| File | Purpose | Tests | Type |
+|------|---------|-------|------|
+| `harness.ts` | Core harness implementation (330 lines) | — | Core |
+| `harness.test.ts` | Harness infrastructure tests | 6 | Unit |
+| `iron-law.integration.test.ts` | Iron Law compatibility tests | 3 | Integration (LLM) |
+| `production-gate.integration.test.ts` | Production Gate compatibility tests | 2 | Integration (LLM) |
+| `dangerous-commands.integration.test.ts` | Production Gate dangerous command blocks (NEW) | 12 | Integration (LLM) |
+| `workflow-invocation.integration.test.ts` | Extension workflow invocation (NEW) | 7 | Integration (LLM) |
+| `README.md` | This file | — | Docs |
 
 ## Future Enhancements
 
