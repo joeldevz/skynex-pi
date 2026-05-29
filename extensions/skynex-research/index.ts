@@ -13,6 +13,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { buildResearchHint, formatResearchNotification } from "./dispatcher.js";
 import type { ResearchSessionState } from "./types.js";
+import { getTriage } from "../triage/index.js";
 
 /**
  * Per-session state. Mirrors triage's sessionTriageStore pattern.
@@ -34,14 +35,18 @@ export default function (pi: ExtensionAPI): void {
 
   // Inject research mode hint into system prompt when mode is active
   pi.on("before_agent_start", async (event, _ctx) => {
-    // We derive sessionId inside the event handler at call time
-    // because session_start may not have fired for all Pi invocations
     const sessionId = _ctx.sessionManager.getSessionFile() ?? `ephemeral-${process.pid}`;
     const state = sessionResearchStore.get(sessionId);
     const mode = state?.mode ?? "inactive";
 
     const hint = buildResearchHint(mode);
     if (!hint) return undefined;
+
+    // Respect triage: don't activate research mode for conversational/small turns
+    const triageResult = getTriage(sessionId);
+    if (triageResult?.path === "conversational" || triageResult?.path === "small") {
+      return undefined;
+    }
 
     return {
       systemPrompt: `${event.systemPrompt}\n\n${hint}`,

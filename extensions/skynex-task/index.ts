@@ -6,6 +6,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { buildTaskHint, formatTaskNotification } from "./dispatcher.js";
 import type { TaskCreationState } from "./types.js";
+import { getTriage } from "../triage/index.js";
 
 /**
  * Per-session state. Mirrors sessionResearchStore pattern from skynex-research.
@@ -39,6 +40,12 @@ export default function (pi: ExtensionAPI): void {
 
     const hint = buildTaskHint(state);
     if (!hint) return undefined;
+
+    // Respect triage: don't activate task mode for conversational/small turns
+    const triageResult = getTriage(sessionId);
+    if (triageResult?.path === "conversational" || triageResult?.path === "small") {
+      return undefined;
+    }
 
     return {
       systemPrompt: `${event.systemPrompt}\n\n${hint}`,
