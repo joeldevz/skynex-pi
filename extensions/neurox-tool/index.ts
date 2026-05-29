@@ -186,6 +186,17 @@ function formatRecallResult(result: NeuroxCliResult, query: string, namespaceUse
 }
 
 export default function (pi: ExtensionAPI) {
+  // If neurox tools are already registered (e.g. via pi-mcp-adapter), skip
+  // registration entirely to avoid tool name conflicts.
+  const alreadyRegistered = pi.getAllTools?.().some(
+    (t: unknown) => (typeof t === "string" ? t : (t as { name?: string }).name) === "neurox_recall",
+  ) ?? false;
+
+  if (alreadyRegistered) {
+    // neurox tools provided by another extension (e.g. pi-mcp-adapter) — skip
+    return;
+  }
+
   // Detect binary at module load. If unavailable, log and skip registration.
   let binary: string | undefined;
   let activeConfig = DEFAULT_NEUROX_CONFIG;
