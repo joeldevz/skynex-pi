@@ -8,6 +8,14 @@ description: Research mode synthesis protocol. Called by the main model after 3 
 > Use ONLY when research mode is active and you have received envelopes from
 > research-neurox, research-web, and research-code.
 
+## When to invoke this skill
+
+Only invoke `/skill:skynex-research` when you have a **clear, specific question** from the user.
+- ✅ "¿cómo implementar rate limiting en NestJS?" → clear, search now
+- ✅ "¿qué decisiones tomamos sobre auth?" → clear, search now
+- ❌ "hola" → greeting, respond normally, do NOT search
+- ❌ "quiero investigar algo" → vague, ask ONE clarifying question first
+
 ## Compact Rules
 
 1. Read ALL 3 envelopes before writing anything — do not synthesize from 1 or 2
