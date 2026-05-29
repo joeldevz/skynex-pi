@@ -185,18 +185,24 @@ function formatRecallResult(result: NeuroxCliResult, query: string, namespaceUse
   return base;
 }
 
-export default function (pi: ExtensionAPI) {
-  // If neurox tools are already registered (e.g. via pi-mcp-adapter), skip
-  // registration entirely to avoid tool name conflicts.
-  const alreadyRegistered = pi.getAllTools?.().some(
-    (t: unknown) => (typeof t === "string" ? t : (t as { name?: string }).name) === "neurox_recall",
-  ) ?? false;
-
-  if (alreadyRegistered) {
-    // neurox tools provided by another extension (e.g. pi-mcp-adapter) — skip
-    return;
+/**
+ * Safely register a tool, silently skipping if the name conflicts with an
+ * already-registered tool (e.g. from pi-mcp-adapter providing neurox tools).
+ */
+function safeRegisterTool(pi: ExtensionAPI, definition: Parameters<ExtensionAPI["registerTool"]>[0]): void {
+  try {
+    pi.registerTool(definition);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.toLowerCase().includes("conflict") || msg.toLowerCase().includes("already")) {
+      // Another extension already registered this tool — silently skip.
+      return;
+    }
+    throw err; // Re-throw unexpected errors
   }
+}
 
+export default function (pi: ExtensionAPI) {
   // Detect binary at module load. If unavailable, log and skip registration.
   let binary: string | undefined;
   let activeConfig = DEFAULT_NEUROX_CONFIG;
@@ -224,7 +230,7 @@ export default function (pi: ExtensionAPI) {
   });
 
   // ── neurox_recall ──────────────────────────────────────────────────────────
-  pi.registerTool({
+  safeRegisterTool(pi, {
     name: "neurox_recall",
     label: "Neurox: Recall",
     description:
@@ -266,7 +272,7 @@ export default function (pi: ExtensionAPI) {
   });
 
   // ── neurox_save ────────────────────────────────────────────────────────────
-  pi.registerTool({
+  safeRegisterTool(pi, {
     name: "neurox_save",
     label: "Neurox: Save",
     description:
@@ -319,7 +325,7 @@ export default function (pi: ExtensionAPI) {
   });
 
   // ── neurox_context ─────────────────────────────────────────────────────────
-  pi.registerTool({
+  safeRegisterTool(pi, {
     name: "neurox_context",
     label: "Neurox: Context",
     description:
@@ -344,7 +350,7 @@ export default function (pi: ExtensionAPI) {
   });
 
   // ── neurox_session_start ───────────────────────────────────────────────────
-  pi.registerTool({
+  safeRegisterTool(pi, {
     name: "neurox_session_start",
     label: "Neurox: Session Start",
     description:
@@ -370,7 +376,7 @@ export default function (pi: ExtensionAPI) {
   });
 
   // ── neurox_session_end ─────────────────────────────────────────────────────
-  pi.registerTool({
+  safeRegisterTool(pi, {
     name: "neurox_session_end",
     label: "Neurox: Session End",
     description:
