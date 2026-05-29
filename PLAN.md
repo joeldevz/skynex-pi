@@ -1799,3 +1799,750 @@ node -e "
 6. **`pi install` not needed** — skynex-task is a local extension in the same package. Adding it to `package.json → pi.extensions` is sufficient for Pi to load it. No `pi install` step.
 
 7. **Test count** — baseline is **356 tests** (verified May 29 2026). Mode 2 adds 12 dispatcher + 8 index = **20 new tests**, expected total ≥ **376**. (Note: Step M2-8 says ≥374 as a conservative floor; actual count depends on exact test implementations.)
+
+---
+
+## Mode 3: Execution (/skynex:execute)
+
+### Goal
+
+Implement the execution mode extension (`/skynex:execute`) — Mode 3 of 3 for skynex-pi. When active, the mode fetches a Jira task, runs structured TDD-driven development via existing sub-agents and skills, validates output with four parallel reviewers, and opens a PR. Phase tracking in state enables session resume after `/compact` or reconnect.
+
+### Business Context
+
+- **Users**: engineers who want to execute a Jira task end-to-end with enforced TDD, discovery, and validation.
+- **Activation**: `/skynex:execute` (prompts for task key) or `/skynex:execute LMS-142` (skips prompt).
+- **HITL gates**: one mandatory gate before tests are generated (TDD proposal review); one before PR push (branch-pr gate). All other phases auto-advance.
+- **Phase persistence**: the injected hint always includes `phase` so the model knows exactly where it is after `/compact` or session resume.
+- **TDD compliance**: Step 5 (tests only) MUST complete — all tests red — before Step 6 (implementation). The iron-law extension enforces this naturally since tests are written first and implementation files don't exist yet.
+- **No new sub-agents**: all sub-agents (scout, coder, verifier, test-reviewer, security, skill-validator) already exist in `assets/agents/`. The SKILL.md references them by name.
+
+### Technical Context
+
+- **Mirror target**: `extensions/skynex-task/` — identical pattern: `Map<sessionId, State>`, `before_agent_start` injection, `session_start` seed, `session_shutdown` cleanup, exported `get*Mode` + `_set*Mode` for tests.
+- **Key difference from skynex-task**: state has a `phase: ExecutionPhase` field (8 values) + `taskKey: string | null`. `buildExecutionHint` must branch on both `mode` and `phase`.
+- **Jira MCP tools used**: `mcp_Atlassian_getJiraIssue` (Step 1) and `mcp_Atlassian_transitionJiraIssue` (Step 8). Both are already in the Atlassian MCP server.
+- **Dispatcher**: `buildExecutionHint(state)` returns `undefined` when inactive; returns a multi-section hint when active, with the current phase prominently labeled so the model never misidentifies its position.
+- **Skill structure**: `skills/skynex-execute/SKILL.md` ≤ 180 lines, references sub-skills by `/skill:*` name, does NOT duplicate their content.
+- **Baseline**: 376 tests (May 29 2026, post–Mode 2). Mode 3 adds ~14 dispatcher + ~9 index = ≥ **23 new tests**, expected total ≥ **399**.
+- **package.json**: add `"./extensions/skynex-execute"` as the 11th entry in `pi.extensions`.
+
+---
+
+### Step M3-1: Create `extensions/skynex-execute/types.ts`
+
+- **What**: Define `ExecutionPhase`, `ExecutionMode`, and `ExecutionState` — the complete type surface for the extension.
+- **Why**: Types are the contract between dispatcher, index, tests, and the skill. Must be stable before any other file is written.
+- **Where**: `extensions/skynex-execute/types.ts` (new file)
+- **How**:
+
+  Create the file with exactly this content:
+
+  ```typescript
+  /**
+   * Type definitions for execution mode.
+   * Pure module with no imports from @earendil-works.
+   */
+
+  /**
+   * Whether execution mode is active for this session.
+   */
+  export type ExecutionMode = "active" | "inactive";
+
+  /**
+   * The current phase within an active execution session.
+   * Persisted in state so the model can resume after /compact.
+   */
+  export type ExecutionPhase =
+    | "idle"
+    | "discovery"
+    | "test-audit"
+    | "tdd-proposal"      // HITL gate — model waits for user approval
+    | "generating-tests"
+    | "implementing"
+    | "validating"
+    | "pr-review"
+    | "complete";
+
+  /**
+   * Per-session state stored in the module-level Map.
+   * Mirrors TaskCreationState pattern from skynex-task.
+   */
+  export interface ExecutionState {
+    /** Whether execution mode is active. */
+    mode: ExecutionMode;
+    /**
+     * Jira task key being executed (e.g. "LMS-142").
+     * null = not yet set (user will be asked on activation).
+     */
+    taskKey: string | null;
+    /** Current execution phase. Enables resume after /compact. */
+    phase: ExecutionPhase;
+    /** ISO timestamp when mode was last toggled. */
+    toggledAt: string;
+  }
+  ```
+
+- **Acceptance**:
+  - `pnpm typecheck` passes with the new file.
+  - `ExecutionPhase` has exactly 9 values as listed above.
+  - `ExecutionState` has `mode`, `taskKey`, `phase`, `toggledAt` fields — no extras.
+- **Status**: [ ] pending
+
+---
+
+### Step M3-2: Create `extensions/skynex-execute/dispatcher.ts`
+
+- **What**: Pure functions `buildExecutionHint` and `formatExecutionNotification` — no Pi imports, fully unit-testable.
+- **Why**: Mirrors `dispatcher.ts` in skynex-task. Keeping side-effect-free logic here allows the test suite to verify hint correctness without a Pi runtime.
+- **Where**: `extensions/skynex-execute/dispatcher.ts` (new file)
+- **How**:
+
+  ```typescript
+  /**
+   * Dispatcher — pure functions for execution mode injection and notifications.
+   */
+
+  import type { ExecutionMode, ExecutionState } from "./types.js";
+
+  /**
+   * Builds the system-prompt injection block when execution mode is active.
+   * Returns undefined when mode is inactive (zero overhead).
+   * Always includes the current phase so the model can resume correctly.
+   *
+   * @param state - Current execution state.
+   */
+  export function buildExecutionHint(state: ExecutionState): string | undefined {
+    if (state.mode !== "active") return undefined;
+
+    const taskLine = state.taskKey
+      ? `Jira task: **${state.taskKey}** (loaded — do NOT ask again).`
+      : "Jira task: **not yet set** — your FIRST action must be to ask: \"¿Cuál es la task key? (ej: LMS-142)\"";
+
+    const phaseLabel = `Current phase: **${state.phase}** — resume here after /compact.`;
+
+    const phaseInstructions = buildPhaseInstructions(state.phase);
+
+    return [
+      "## EXECUTION MODE: active",
+      taskLine,
+      phaseLabel,
+      "",
+      "You are in execution mode. Follow /skill:skynex-execute EXACTLY.",
+      "The full 8-step flow is documented in that skill.",
+      "Proceed with the CURRENT PHASE only — do not jump ahead.",
+      "",
+      phaseInstructions,
+      "",
+      "CRITICAL RULES:",
+      "  • Do NOT write implementation code before ALL tests from Step 5 are failing",
+      "  • Do NOT skip the TDD proposal gate (Step 4) — wait for explicit user approval",
+      "  • Do NOT create the PR (Step 8) before validate (Step 7) returns APPROVED",
+      "  • Approval keywords: approve / dale / ok / sí / go / proceed / ejecuta",
+      "  • Cancel keywords: cancel / no / stop / para / abortar",
+    ].join("\n");
+  }
+
+  /**
+   * Returns phase-specific instruction block for the current phase.
+   * Keeps the main hint readable while still being prescriptive per-phase.
+   */
+  function buildPhaseInstructions(phase: ExecutionState["phase"]): string {
+    switch (phase) {
+      case "idle":
+        return "Next: STEP 1 — call mcp_Atlassian_getJiraIssue(taskKey) and show task summary to user.";
+      case "discovery":
+        return "Next: STEP 2 — invoke /skill:discover with the Jira task context. Show scout envelope when done.";
+      case "test-audit":
+        return "Next: STEP 3 — list existing integration tests and unit tests. Show counts to user.";
+      case "tdd-proposal":
+        return [
+          "Next: STEP 4 (HITL GATE) — propose tests as a table:",
+          "  | Test | Type | Criterion covered |",
+          "  Ask: \"¿Aprobás estos tests? Podés editar antes de generarlos.\"",
+          "  Wait for: approve → Step 5 | edit → update table | cancel → abort",
+        ].join("\n");
+      case "generating-tests":
+        return "Next: STEP 5 — invoke coder sub-agent to write ONLY tests (no implementation). Then verifier must confirm ALL tests FAIL.";
+      case "implementing":
+        return "Next: STEP 6 — invoke /skill:build. Coder writes implementation to make failing tests pass. Verifier confirms ALL tests pass.";
+      case "validating":
+        return "Next: STEP 7 — invoke /skill:validate (test-reviewer + security×2 + skill-validator in parallel). Show verdict.";
+      case "pr-review":
+        return "Next: STEP 8 — invoke /skill:branch-pr. After PR created, call mcp_Atlassian_transitionJiraIssue(taskKey, 'In Review').";
+      case "complete":
+        return "Execution complete. Task transitioned to In Review. Deactivate mode with /skynex:execute.";
+    }
+  }
+
+  /**
+   * One-line notification shown to the user when mode changes.
+   */
+  export function formatExecutionNotification(
+    mode: ExecutionMode,
+    taskKey: string | null,
+  ): string {
+    if (mode === "active") {
+      const task = taskKey ? ` [${taskKey}]` : "";
+      return `⚡ EXECUTION MODE: active${task} — iniciando flujo fetch → discover → TDD → build → validate → PR`;
+    }
+    return "⚡ EXECUTION MODE: inactive — volviendo a conversación normal";
+  }
+  ```
+
+- **Acceptance**:
+  - `buildExecutionHint` returns `undefined` when `mode === "inactive"`.
+  - `buildExecutionHint` with `mode === "active"` and `taskKey === null` includes `"¿Cuál es la task key?"`.
+  - `buildExecutionHint` with `taskKey === "LMS-142"` includes `"LMS-142"` and does NOT include the question.
+  - Each phase value produces a non-empty `phaseInstructions` block.
+  - `formatExecutionNotification("active", "LMS-42")` includes `"LMS-42"`.
+  - `pnpm typecheck` passes.
+- **Status**: [ ] pending
+
+---
+
+### Step M3-3: Create `extensions/skynex-execute/dispatcher.test.ts`
+
+- **What**: Unit tests for all pure dispatcher functions — no Pi runtime mocks needed.
+- **Why**: Mirrors `dispatcher.test.ts` in skynex-task. Tests run fast, catch regressions in hint content, and verify all 9 phase-instruction branches.
+- **Where**: `extensions/skynex-execute/dispatcher.test.ts` (new file)
+- **How**:
+
+  Use `node:test` + `node:assert/strict` (same as all other test files in this repo). Define a `makeState` helper:
+
+  ```typescript
+  import { test } from "node:test";
+  import assert from "node:assert/strict";
+  import { buildExecutionHint, formatExecutionNotification } from "./dispatcher.js";
+  import type { ExecutionState } from "./types.js";
+
+  const makeState = (
+    mode: ExecutionState["mode"],
+    phase: ExecutionState["phase"] = "idle",
+    taskKey: string | null = null,
+  ): ExecutionState => ({
+    mode,
+    phase,
+    taskKey,
+    toggledAt: "2026-01-01T00:00:00.000Z",
+  });
+  ```
+
+  Write these **14 tests** (names are the contract):
+
+  | # | Test name |
+  |---|-----------|
+  | 1 | `buildExecutionHint: returns undefined when inactive` |
+  | 2 | `buildExecutionHint: returns string when active` |
+  | 3 | `buildExecutionHint: active with no taskKey asks for task key` |
+  | 4 | `buildExecutionHint: active with taskKey does not ask for task key` |
+  | 5 | `buildExecutionHint: active hint includes task key in output` |
+  | 6 | `buildExecutionHint: active hint includes EXECUTION MODE header` |
+  | 7 | `buildExecutionHint: active hint includes current phase` |
+  | 8 | `buildExecutionHint: idle phase mentions STEP 1` |
+  | 9 | `buildExecutionHint: tdd-proposal phase mentions HITL GATE` |
+  | 10 | `buildExecutionHint: generating-tests phase mentions coder and FAIL` |
+  | 11 | `buildExecutionHint: complete phase mentions deactivate` |
+  | 12 | `buildExecutionHint: hint includes HITL approval keywords` |
+  | 13 | `formatExecutionNotification: active with taskKey includes task key` |
+  | 14 | `formatExecutionNotification: inactive signals return to normal` |
+
+  Assert exact string includes for content that the model relies on. No process.exit or external I/O.
+
+- **Acceptance**:
+  - All 14 tests pass (`pnpm test`).
+  - Zero failing tests, zero imports from `@earendil-works/pi-coding-agent`.
+- **Status**: [ ] pending
+
+---
+
+### Step M3-4: Create `extensions/skynex-execute/index.ts`
+
+- **What**: Pi extension entry point — registers hooks (`session_start`, `before_agent_start`, `session_shutdown`) and commands (`skynex:execute`, `skynex:execute:status`).
+- **Why**: Mirrors `extensions/skynex-task/index.ts` exactly. The hooks ensure state is seeded per-session, the hint is injected into every agent turn when active, and state is cleaned up on shutdown.
+- **Where**: `extensions/skynex-execute/index.ts` (new file)
+- **How**:
+
+  ```typescript
+  /**
+   * Execution mode extension.
+   * Registers hooks and commands for the /skynex:execute mode.
+   */
+
+  import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+  import { buildExecutionHint, formatExecutionNotification } from "./dispatcher.js";
+  import type { ExecutionState } from "./types.js";
+
+  /**
+   * Per-session state. Mirrors sessionTaskStore pattern from skynex-task.
+   * Key: sessionFile path (or ephemeral-<pid> fallback).
+   */
+  const sessionExecutionStore = new Map<string, ExecutionState>();
+
+  export default function (pi: ExtensionAPI): void {
+    // ── Lifecycle hooks ──────────────────────────────────────────────────────
+
+    pi.on("session_start", (_event, ctx) => {
+      const sessionId =
+        ctx.sessionManager.getSessionFile() ?? `ephemeral-${process.pid}`;
+      sessionExecutionStore.set(sessionId, {
+        mode: "inactive",
+        taskKey: null,
+        phase: "idle",
+        toggledAt: new Date().toISOString(),
+      });
+    });
+
+    pi.on("before_agent_start", async (event, ctx) => {
+      const sessionId =
+        ctx.sessionManager.getSessionFile() ?? `ephemeral-${process.pid}`;
+      const state = sessionExecutionStore.get(sessionId) ?? {
+        mode: "inactive" as const,
+        taskKey: null,
+        phase: "idle" as const,
+        toggledAt: new Date().toISOString(),
+      };
+
+      const hint = buildExecutionHint(state);
+      if (!hint) return undefined;
+
+      return {
+        systemPrompt: `${event.systemPrompt}\n\n${hint}`,
+      };
+    });
+
+    pi.on("session_shutdown", (_event, ctx) => {
+      const sessionId =
+        ctx.sessionManager.getSessionFile() ?? `ephemeral-${process.pid}`;
+      sessionExecutionStore.delete(sessionId);
+    });
+
+    // ── Commands ─────────────────────────────────────────────────────────────
+
+    /**
+     * /skynex:execute [TASK-KEY]
+     *
+     * - Activates execution mode (or deactivates if already active).
+     * - If TASK-KEY is provided as an argument, stores it immediately.
+     * - If not provided AND mode becomes active, injected hint will ask user.
+     *
+     * Usage:
+     *   /skynex:execute            → activate, ask for task key
+     *   /skynex:execute LMS-142    → activate with task key pre-set
+     *   /skynex:execute (again)    → deactivate
+     */
+    pi.registerCommand("skynex:execute", {
+      description:
+        "Activate (or deactivate) execution mode. When active, follows fetch → discover → TDD → build → validate → PR flow. Optionally pass a Jira task key: /skynex:execute LMS-142",
+      handler: async (_args, ctx) => {
+        const sessionId =
+          ctx.sessionManager.getSessionFile() ?? `ephemeral-${process.pid}`;
+
+        const current = sessionExecutionStore.get(sessionId);
+        const newMode = current?.mode === "active" ? "inactive" : "active";
+
+        // Parse optional task key from args (first token, uppercased)
+        const parts = (_args ?? "").trim().split(/\s+/);
+        const taskKeyFromArgs =
+          parts[0] && parts[0].length > 0 ? parts[0].toUpperCase() : null;
+
+        // When deactivating, clear task key and reset phase
+        const newTaskKey =
+          newMode === "active"
+            ? taskKeyFromArgs ?? current?.taskKey ?? null
+            : null;
+
+        sessionExecutionStore.set(sessionId, {
+          mode: newMode,
+          taskKey: newTaskKey,
+          phase: "idle", // always reset phase on toggle
+          toggledAt: new Date().toISOString(),
+        });
+
+        ctx.ui.notify(formatExecutionNotification(newMode, newTaskKey), "info");
+      },
+    });
+
+    /**
+     * /skynex:execute:status — show current execution mode state.
+     */
+    pi.registerCommand("skynex:execute:status", {
+      description: "Show the current execution mode state for this session.",
+      handler: async (_args, ctx) => {
+        const sessionId =
+          ctx.sessionManager.getSessionFile() ?? `ephemeral-${process.pid}`;
+        const state = sessionExecutionStore.get(sessionId);
+
+        if (!state) {
+          ctx.ui.notify(
+            "No execution mode state — send a message first.",
+            "warning",
+          );
+          return;
+        }
+
+        ctx.ui.notify(
+          [
+            `Execution mode: ${state.mode.toUpperCase()}`,
+            `Task key:       ${state.taskKey ?? "(not set)"}`,
+            `Phase:          ${state.phase}`,
+            `Toggled at:     ${state.toggledAt}`,
+          ].join("\n"),
+          "info",
+        );
+      },
+    });
+  }
+
+  // ── Exported helpers (for tests + future phase extensions) ──────────────────
+
+  /**
+   * Returns the execution mode state for a session.
+   * Exported for tests — mirrors getTaskMode pattern.
+   */
+  export function getExecutionMode(
+    sessionFile: string | undefined,
+  ): ExecutionState | undefined {
+    const sessionId = sessionFile ?? `ephemeral-${process.pid}`;
+    return sessionExecutionStore.get(sessionId);
+  }
+
+  /**
+   * Set mode directly — used in tests to seed state without going through commands.
+   * @internal
+   */
+  export function _setExecutionMode(
+    sessionFile: string | undefined,
+    state: ExecutionState,
+  ): void {
+    const sessionId = sessionFile ?? `ephemeral-${process.pid}`;
+    sessionExecutionStore.set(sessionId, state);
+  }
+  ```
+
+- **Acceptance**:
+  - `pnpm typecheck` passes with no new errors.
+  - Commands `skynex:execute` and `skynex:execute:status` are registered.
+  - `getExecutionMode` and `_setExecutionMode` are exported.
+  - `before_agent_start` injects hint only when `mode === "active"`.
+- **Status**: [ ] pending
+
+---
+
+### Step M3-5: Create `extensions/skynex-execute/index.test.ts`
+
+- **What**: Unit tests for extension state management — toggle behavior, session isolation, phase handling, ephemeral fallback.
+- **Why**: Mirrors `extensions/skynex-task/index.test.ts`. These tests cover the Map-level behavior that dispatcher tests don't reach.
+- **Where**: `extensions/skynex-execute/index.test.ts` (new file)
+- **How**:
+
+  ```typescript
+  import { test } from "node:test";
+  import assert from "node:assert/strict";
+  import { getExecutionMode, _setExecutionMode } from "./index.js";
+  import type { ExecutionState } from "./types.js";
+
+  const SESSION_A = "/tmp/exec-session-a.json";
+  const SESSION_B = "/tmp/exec-session-b.json";
+
+  const makeState = (
+    mode: ExecutionState["mode"],
+    phase: ExecutionState["phase"] = "idle",
+    taskKey: string | null = null,
+  ): ExecutionState => ({
+    mode,
+    phase,
+    taskKey,
+    toggledAt: new Date().toISOString(),
+  });
+  ```
+
+  Write these **9 tests**:
+
+  | # | Test name |
+  |---|-----------|
+  | 1 | `getExecutionMode: returns undefined for unknown session` |
+  | 2 | `getExecutionMode: returns state after _setExecutionMode` |
+  | 3 | `sessions are isolated: session A active does not affect session B` |
+  | 4 | `toggle: inactive → active` |
+  | 5 | `toggle: active → inactive clears taskKey and resets phase` |
+  | 6 | `taskKey stored correctly when seeded` |
+  | 7 | `phase stored and retrieved correctly for all values` — loop over all 9 `ExecutionPhase` values |
+  | 8 | `taskKey is null when not provided` |
+  | 9 | `undefined sessionFile uses ephemeral key and does not throw` |
+
+  For test 7, iterate: `["idle", "discovery", "test-audit", "tdd-proposal", "generating-tests", "implementing", "validating", "pr-review", "complete"]` and assert `getExecutionMode(SESSION_A)?.phase === phase` for each.
+
+- **Acceptance**:
+  - All 9 tests pass.
+  - Zero imports from `@earendil-works/pi-coding-agent`.
+  - `pnpm test` shows ≥ 399 total passing (376 baseline + 14 dispatcher + 9 index).
+- **Status**: [ ] pending
+
+---
+
+### Step M3-6: Create `skills/skynex-execute/SKILL.md`
+
+- **What**: The SKILL.md that the model reads when execution mode is active. Documents the 8-step flow, HITL gates, phase transitions, and sub-agent delegation — references existing skills by `/skill:*` name instead of duplicating their content.
+- **Why**: This is the behavioral contract the main model executes. The hint injected by `buildExecutionHint` tells the model WHERE it is; this skill tells the model WHAT TO DO at each step.
+- **Where**: `skills/skynex-execute/SKILL.md` (new file) — matches `skills/skynex-task/SKILL.md` location pattern.
+- **How**:
+
+  Write the file. Target ≤ 180 lines. Required structure:
+
+  ```markdown
+  ---
+  name: skynex-execute
+  description: Execution mode flow. Sequential 8 steps — fetch, discover, test-audit, TDD-proposal (HITL), generate-tests, implement, validate, PR. Activated by /skynex:execute. Delegates discovery, build, validate, and PR phases to existing sub-skills.
+  ---
+
+  # skynex-execute — Execution Flow
+
+  > Use ONLY when execution mode is active.
+  > Each step transitions the phase in state — essential for /compact resume.
+
+  ## Compact Rules
+
+  1. SEQUENTIAL — never skip or reorder the 8 steps
+  2. After each step completes, announce the phase transition to the user: "Phase: <name> ✓ → next: <name>"
+  3. HITL gate at Step 4 — do NOT proceed to Step 5 without explicit approval
+  4. Step 5 MUST produce ALL-FAILING tests before Step 6 starts
+  5. If any test PASSES in Step 5, warn user and ask: continue or abort?
+  6. /skill:build in Step 6 owns coder + verifier chain — do NOT orchestrate directly
+  7. /skill:validate in Step 7 runs 4 agents in parallel — do NOT serialize them
+  8. PR transition (Step 8) calls mcp_Atlassian_transitionJiraIssue AFTER PR URL confirmed
+  9. Approval keywords: approve / dale / ok / sí / go / proceed / ejecuta
+  10. Cancel keywords: cancel / no / stop / para / abortar
+  ```
+
+  Then write Step 1 through Step 8 sections. Each section:
+  - Has a `### Step N — TITLE (phase: <phase-value>)` header
+  - Shows the exact tool call or skill invocation
+  - Shows what to display to the user
+  - Shows the phase transition announcement
+
+  Key sections to include verbatim:
+
+  **Step 1 — FETCH TASK (phase: idle → discovery)**
+  ```
+  Call: mcp_Atlassian_getJiraIssue(taskKey)
+  Extract: title, description, acceptance_criteria
+  Show: "Ejecutando: <taskKey> — <title>"
+  Show: acceptance_criteria as bullet list
+  Transition: phase → "discovery"
+  ```
+
+  **Step 2 — DISCOVERY (phase: discovery → test-audit)**
+  ```
+  Invoke: /skill:discover
+  Pass: Jira task context (title + description + acceptance_criteria)
+  Show: scout envelope summary (files found, prior Neurox context)
+  If envelope.status !== "ready" → STOP, surface to user
+  Transition: phase → "test-audit"
+  ```
+
+  **Step 3 — TEST AUDIT (phase: test-audit → tdd-proposal)**
+  ```
+  Review files from scout envelope (entry_points, related_tests)
+  List: integration tests (most important) — count and paths
+  List: unit tests — count and paths
+  Show: "Tests existentes: X integración, Y unitarios"
+  Transition: phase → "tdd-proposal"
+  ```
+
+  **Step 4 — TDD PROPOSAL (phase: tdd-proposal) — HITL GATE**
+  ```
+  For each acceptance_criterion → propose 1-2 test cases
+  Present as table:
+    | Test description | Type (integration/unit) | Criterion covered |
+  Ask: "¿Aprobás estos tests? Podés editar antes de generarlos."
+  Wait:
+    approve/dale/ok → proceed to Step 5, phase → "generating-tests"
+    edit "<note>" → update table, show again (loop)
+    cancel → abort, notify "Cancelado — execution mode remains active"
+  DO NOT proceed without explicit approval keyword.
+  ```
+
+  **Step 5 — GENERATE TESTS / RED PHASE (phase: generating-tests → implementing)**
+  ```
+  Invoke: /skill:build (coder ONLY writes tests, no implementation)
+  Pass coder: "Write ONLY the approved tests. Do not write any implementation."
+  After coder: invoke verifier to run tests
+  Check: ALL approved tests MUST FAIL
+  If all fail → show "Tests generados: X/X fallan ✅" → phase → "implementing"
+  If any pass → show "⚠️ Y tests pasan (no deberían)" → ask user: continue or abort?
+  ```
+
+  **Step 6 — IMPLEMENT / GREEN PHASE (phase: implementing → validating)**
+  ```
+  Invoke: /skill:build
+  Pass: full context from PLAN/tests — coder writes implementation only
+  Verifier confirms all tests pass after each slice
+  Goal: 0 failing tests
+  Transition: phase → "validating"
+  ```
+
+  **Step 7 — VALIDATE (phase: validating → pr-review)**
+  ```
+  Invoke: /skill:validate
+  Input: changed_files from build envelope (union of all coder slices)
+  4 agents run in parallel: test-reviewer + security(judge1) + security(judge2) + skill-validator
+  Show synthesized verdict
+  If APPROVED or APPROVED with warnings → phase → "pr-review"
+  If NEEDS_FIX → return to /skill:build with blocker list; reset phase → "implementing"
+  If ESCALATED → surface to user for decision; do NOT auto-advance
+  ```
+
+  **Step 8 — PR REVIEW (phase: pr-review → complete)**
+  ```
+  Invoke: /skill:branch-pr
+  PR description MUST include:
+    - Task key: <taskKey>
+    - Acceptance criteria: bullet list from Step 1
+    - Test coverage: list of tests added from Step 5
+  After PR URL confirmed:
+    Call: mcp_Atlassian_transitionJiraIssue(taskKey, "In Review")
+  Transition: phase → "complete"
+  Show: PR URL + "Task <taskKey> transitioned to In Review ✅"
+  ```
+
+  Close with:
+  ```markdown
+  ## Phase Transition Map
+
+  idle → discovery → test-audit → tdd-proposal → generating-tests → implementing → validating → pr-review → complete
+
+  On /compact or session resume: execution mode hint shows current phase.
+  Resume from that phase — do NOT restart from Step 1.
+  ```
+
+- **Acceptance**:
+  - File exists at `skills/skynex-execute/SKILL.md`.
+  - Line count ≤ 180.
+  - All 8 steps are documented with phase transitions.
+  - HITL gate at Step 4 is explicit with approval/cancel keywords.
+  - File references `/skill:discover`, `/skill:build`, `/skill:validate`, `/skill:branch-pr` — does NOT inline their content.
+  - `scripts/verify-package-files.mjs` reports 0 warnings for this file (requires frontmatter with `name` and `description`).
+- **Status**: [ ] pending
+
+---
+
+### Step M3-7: Register extension in `package.json`
+
+- **What**: Add `"./extensions/skynex-execute"` as the 11th entry in `pi.extensions`.
+- **Why**: Without this entry Pi will not load the extension. No `pi install` is needed — local extensions are loaded directly from `pi.extensions`.
+- **Where**: `package.json` — `pi.extensions` array
+- **How**:
+
+  Current array (10 entries, last entry is `"./extensions/skynex-task"`):
+  ```json
+  "pi": {
+    "extensions": [
+      "./extensions/triage",
+      "./extensions/iron-law",
+      "./extensions/skill-registry",
+      "./extensions/smart-zone",
+      "./extensions/neurox-tool",
+      "./extensions/production-gate",
+      "./extensions/archive",
+      "./extensions/skynex-installer",
+      "./extensions/skynex-research",
+      "./extensions/skynex-task"
+    ]
+  }
+  ```
+
+  Add `"./extensions/skynex-execute"` immediately after `"./extensions/skynex-task"`:
+  ```json
+      "./extensions/skynex-task",
+      "./extensions/skynex-execute"
+  ```
+
+- **Acceptance**:
+  - `package.json` has exactly 11 entries in `pi.extensions`.
+  - `pnpm typecheck` still passes.
+  - `node -e "require('./package.json').pi.extensions.find(e => e.includes('skynex-execute'))"` outputs the entry.
+  - `scripts/verify-package-files.mjs` reports 0 warnings (extension file and skill file are present).
+- **Status**: [ ] pending
+
+---
+
+### Mode 3 Verification
+
+```bash
+# 1. TypeScript typecheck — must be clean
+pnpm typecheck
+
+# 2. Full test suite — must be ≥399 passing, 0 failing
+pnpm test
+
+# 3. File existence check
+node -e "
+  const fs = require('fs');
+  [
+    'extensions/skynex-execute/types.ts',
+    'extensions/skynex-execute/dispatcher.ts',
+    'extensions/skynex-execute/dispatcher.test.ts',
+    'extensions/skynex-execute/index.ts',
+    'extensions/skynex-execute/index.test.ts',
+    'skills/skynex-execute/SKILL.md',
+  ].forEach(f => {
+    fs.accessSync(f);
+    console.log('✓ ' + f);
+  });
+"
+
+# 4. Extension registered in package.json
+node -e "
+  const d = require('./package.json');
+  const entry = d.pi.extensions.find(e => e.includes('skynex-execute'));
+  console.assert(entry, 'MISSING skynex-execute in pi.extensions');
+  console.log('✓ pi.extensions entry:', entry);
+  console.assert(d.pi.extensions.length === 11, 'Expected 11 extensions, got ' + d.pi.extensions.length);
+  console.log('✓ extension count:', d.pi.extensions.length);
+"
+
+# 5. SKILL.md line count (must be ≤180)
+wc -l skills/skynex-execute/SKILL.md
+
+# 6. Package publish validation (0 warnings)
+node scripts/verify-package-files.mjs
+
+# 7. Manual E2E smoke test:
+# a. Start Pi session
+# b. /skynex:execute LMS-999 — verify notification shows [LMS-999]
+# c. /skynex:execute:status — verify mode=ACTIVE, task=LMS-999, phase=idle
+# d. Type a message — verify EXECUTION MODE header appears in system context
+# e. Verify hint includes "STEP 1" instructions (idle phase)
+# f. /skynex:execute (again) — verify mode deactivates and phase resets
+```
+
+---
+
+### Out of Scope (Mode 3)
+
+- Cross-mode coordination (e.g. auto-deactivating research or task mode when execute activates)
+- Phase advancement from within the extension (phase is updated by the model via skill instructions, not by TypeScript hooks)
+- Persisting phase to disk (in-memory Map is sufficient; reconnect starts fresh — this is acceptable for v1 since `/compact` within the same session is handled by the hint injection)
+- Jira status field lookup before transition (the skill passes `"In Review"` as a string; if the Jira project uses a different transition name, the MCP call fails gracefully with an error message)
+- Parallel execution of multiple task keys in one session
+- `/skynex:execute:phase <phase>` command for manual phase override (useful debug tool — deferred to v1.1)
+- Resume-from-phase on session reconnect (the model is told the phase in the hint, but it must still re-read context; full persistence across process restarts is out of scope)
+
+---
+
+### Mode 3 Risks / Notes
+
+1. **`buildExecutionHint` takes full `ExecutionState`** — same pattern as `buildTaskHint` (not `buildResearchHint`). The hint branches on both `mode` and `phase`. The dispatcher test helper `makeState` must accept a `phase` argument (unlike skynex-task which has no phase).
+
+2. **Phase is set by the model, not by TypeScript** — the Pi extension does not know when the model advances from `test-audit` to `tdd-proposal`. This is intentional: the hint informs the model of the current phase on each turn; the model then invokes the next step per the SKILL.md contract. If needed in a future sprint, a `/skynex:execute:advance` command can allow manual phase progression.
+
+3. **Step 5 all-fail assertion** — the skill instructs the model to warn if any test passes unexpectedly in the red phase. This is a behavioral check via verifier, not a TypeScript enforcement. The iron-law extension ensures tests are written BEFORE implementation (it blocks writes to implementation files when no test file is present), which naturally produces the all-fail state.
+
+4. **Task key argument parsing** — identical to project key parsing in skynex-task: `_args` is a raw string, first whitespace-separated token is the key, uppercased unconditionally. No format validation at the TS layer — let Jira MCP fail for invalid keys.
+
+5. **Jira transition string** — `mcp_Atlassian_transitionJiraIssue` is called with the transition NAME string `"In Review"`. If the user's Jira project has a different column name, this call will fail. The SKILL.md documents this as a known limitation. A future improvement would call `mcp_Atlassian_getTransitionsForJiraIssue` first and match by name.
+
+6. **Test count** — baseline is **376 tests** (post–Mode 2, verified May 29 2026). Mode 3 adds 14 dispatcher + 9 index = **23 new tests**, expected total ≥ **399**. The `phase` coverage test in index.test.ts iterates all 9 `ExecutionPhase` values as sub-assertions within a single `test()` call; this counts as 1 test in the runner totals.
+
+7. **SKILL.md line budget** — target is ≤ 180 lines. Given the 8-step flow, this requires disciplined brevity: each step gets 5-7 lines max. Reference `/skill:*` names rather than inlining their content. The phase-transition map at the end takes ~5 lines.

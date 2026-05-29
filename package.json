@@ -1,7 +1,7 @@
 {
   "name": "skynex-pi",
-  "version": "0.9.0",
-  "description": "Multi-agent coding harness for Pi — triage + 17 skills + 11 sub-agents + 9 extensions. Full medium/substantial-path workflow with HITL gates, TDD enforcement, adversarial review, research mode, and task-creation mode.",
+  "version": "1.0.0",
+  "description": "Multi-agent coding harness for Pi — triage + 17 skills + 11 sub-agents + 11 extensions. Full medium/substantial-path workflow with HITL gates, TDD enforcement, adversarial review, research mode, task-creation mode, and execution mode.",
   "type": "module",
   "keywords": [
     "pi-package",
@@ -50,7 +50,8 @@
       "./extensions/archive",
       "./extensions/skynex-installer",
       "./extensions/skynex-research",
-      "./extensions/skynex-task"
+      "./extensions/skynex-task",
+      "./extensions/skynex-execute"
     ],
     "skills": [
       "./skills"
