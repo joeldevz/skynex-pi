@@ -1,508 +1,859 @@
-# skynex-pi — Delivery Plan (Actual)
+# Plan: Research Mode (skynex-pi — Mode 1 of 3)
 
-> **Status**: ✅ COMPLETE (Sprints 1-3 + partial Sprint 4)  
-> **Owner**: Christopher · **Last revision**: 2026-05-21  
-> **Source of truth**: Main branch (commit 8d143fc), PRs #2-#7
+## Goal
 
----
+Add a `/skynex:research` slash command that activates a sticky **research mode** for the session. When active, every user message triggers 3 specialized sub-agents in parallel (neurox, web, codebase) that each return a structured findings envelope; the main model synthesizes a final verdict and saves relevant conclusions to Neurox.
 
-## Current State
-
-**All three paths work end-to-end.** skynex-pi has shipped:
-
-- ✅ **Sprint 1**: 6 core extensions (`triage`, `iron-law`, `skill-registry`, `smart-zone`, `neurox-tool`, `production-gate`)
-- ✅ **Sprint 2**: 4-phase medium-path workflow (discover/plan/build/validate) via skills + sub-agents
-- ✅ **Sprint 3**: 6-phase substantial-path workflow (discover/propose/specify/plan/build/validate) + archivist
-- ⚠️ **Sprint 4**: 50% complete — E2E suite + skill auto-refresh done; status-bar and AFK-runner discarded; team onboarding deferred
-
-**Test suite**: 301 tests, all passing. Typecheck clean. Zero extra dependencies.
-
-**Real workflow** (not the original plan):
-- **Medium path**: skill-driven phases (not `phases/medium/*.ts`)
-- **Substantial path**: 6-phase flow (not 9) via `.pi/skills/` + `.pi/agents/`
-- **Merged code**: PR #2 (medium), PR #3 (substantial), PR #4-#7 (fixes + polish)
+This is Mode 1 of 3 planned modes. Task-creation and execution modes are **explicitly out of scope** for this plan.
 
 ---
 
-## Pre-Sprint Setup ✅
+## Business Context
 
-- [x] Repo created: `joeldevz/skynex-pi`
-- [x] Directory structure: `.pi/extensions/`, `.pi/agents/`, `.pi/skills/`, `docs/`, `evals/`, `scripts/`
-- [x] Core configs: `package.json`, `tsconfig.json`, `.pi/agent/settings.json`, `.pi/agent/AGENTS.md`
-- [x] Design docs: `docs/design/request-flow.md`, `docs/design/production-gate.md`
-- [x] README.md + this PLAN.md
-
----
-
-## Sprint 1 — Core Infrastructure ✅ DONE
-
-**Goal**: 6 extensions that enforce skynex discipline via Pi hooks. Small path works end-to-end.
-
-### S1-1 — `triage` ✅ DONE
-
-Classifies user request into **small/medium/substantial** path. Detects `tdd` flag, risk keywords (`auth`, `payment`, `security`, etc.), estimates affected files/modules. Result cached per session.
-
-**Output**: `TriageResult` (path, reason, tdd flag, signals, estimates)
-
-**Status**: 25/25 tests pass. Implemented in `extensions/core/triage/`.
-
-### S1-2 — `iron-law` ✅ DONE
-
-Enforces TDD discipline (L4 strict):
-1. Production code requires test file
-2. Test must FAIL before implementation
-3. Cannot edit a passing test
-
-**Whitelist**: docs, configs, `.github/`, `scripts/`, `.skynex/`, test files.
-
-**Status**: 53/53 tests pass. Override mechanism logged to `.skynex/iron-law-overrides.md`. Implemented in `extensions/core/iron-law/`.
-
-### S1-3 — `skill-registry` ✅ DONE
-
-Scans all SKILL.md files, extracts compact rules, enforces token budget per skill (default 1000), assigns subsets per agent.
-
-**Exports**: `getCurrentRegistry()`, `getSkillsForAgent(agent)`, `buildPromptInjection(agent)`.
-
-**Caching**: SHA-256 hashed, reused if unchanged. Cache at `.skynex/skill-registry.json`.
-
-**Status**: 34/34 tests pass. Implemented in `extensions/core/skill-registry/`.
-
-### S1-4 — `smart-zone` ✅ DONE
-
-Token budget warden. Warns at **60K**, auto-compacts at **80K** (absolute tokens, not percent).
-
-**Status bar**: Live `tokens 45K/100K ████░░░░░░ 45%` updated each turn.
-
-**Status**: 19/19 tests pass. Implemented in `extensions/core/smart-zone/`.
-
-### S1-5 — `neurox-tool` ✅ DONE
-
-Wraps Neurox CLI as 5 Pi tools: `neurox_recall`, `neurox_save`, `neurox_context`, `neurox_session_start`, `neurox_session_end`.
-
-**Auto-detection**: Binary found via `~/.local/bin/neurox`, `/usr/local/bin/neurox`, `/opt/homebrew/bin/neurox`, `/usr/bin/neurox`, or `which neurox`.
-
-**Status**: 18/18 cli tests pass. Implemented in `extensions/core/neurox-tool/`.
-
-### S1-6 — `production-gate` ✅ DONE
-
-Blocks dangerous commands: `kubectl apply`, `terraform apply`, `git push -f`, `npm publish`, `rm -rf /`, `docker system prune`, and 9+ more categories.
-
-**Modes**: `strict` (default, requires typed confirm), `warn`, `silent`, `off`.
-
-**Audit log**: JSONL append-only at `.skynex/audit.log`. Entries: timestamp, command, category, confirmed/aborted, context (branch/cluster), duration.
-
-**Status**: 51/51 tests pass. Implemented in `extensions/core/production-gate/`.
-
-### Sprint 1 Deliverables ✅
-
-- 6 extensions, each with golden eval tests in `evals/golden/`
-- Env setup: `scripts/setup-env.sh`, `docs/setup-env.md`
-- Small path end-to-end working
+- **User**: Engineers who want validated, multi-source answers before acting (prior decisions + web + code simultaneously).
+- **Activation**: `/skynex:research` → mode stays sticky until another mode command is issued or session ends.
+- **Per-message flow**: 3 parallel sub-agents → structured envelopes → main model synthesis → Neurox save.
+- **Default state**: no mode = normal conversation (zero overhead, zero agents launched).
+- **Mode state**: per-session Map, mirrors triage's `sessionTriageStore` pattern exactly.
+- **Synthesis**: the main model (the one the user is talking to) reads all 3 defenses and synthesizes directly. No 4th synthesizer agent.
 
 ---
 
-## Sprint 2 — Medium Path ✅ DONE
+## Technical Context
 
-**Original plan**: 4 phase extensions at `extensions/phases/medium/*.ts`  
-**Actual**: Skills + sub-agents architecture at `.pi/skills/` + `.pi/agents/`
+### Patterns to mirror
 
-**Goal**: 4-phase workflow for clear, single-module changes. Merged PR #2 (squash commit 8175f6d).
+| Pattern | Source | How we reuse it |
+|---|---|---|
+| `Map<sessionId, State>` | `extensions/triage/index.ts:162` | `sessionResearchStore` tracks active/inactive per session |
+| `before_agent_start` system-prompt injection | `extensions/triage/index.ts:172-206` | Inject research mode workflow hint when mode is active |
+| `pi.registerCommand(name, {handler})` | `extensions/triage/index.ts:277` | `/skynex:research` and `/skynex:research:status` |
+| `session_shutdown` cleanup | `extensions/triage/index.ts:269-273` | Delete session from Map on shutdown |
+| `subagent({ tasks: [...] })` parallel | `skills/specify/SKILL.md:26-42` | 3 parallel tasks in one `subagent` call |
+| Tool-restricted agent frontmatter | `assets/agents/scout.md:4` | Each agent's `tools:` line is restricted to its source |
 
-### Phase 1 — `discover` ✅
+### Pi extension registration
 
-**Skill**: `/.pi/skills/discover.md`
+New extension must be added to `package.json` → `pi.extensions` array (currently has 8 entries; this adds a 9th).
 
-Combines: neurox cross-namespace search, project file discovery, test discovery, skill registry lookup. Invokes `scout` sub-agent (read-only exploration).
+### Sub-agent restriction rationale
 
-**Output**: `.skynex/{slice}/discovery.md`
+- `research-neurox`: `tools: neurox_recall` only → pure memory retrieval, no web, no fs
+- `research-web`: `tools: web_search, fetch_content` only → pure external retrieval
+- `research-code`: `tools: read, grep, glob` only → pure codebase scan
 
-### Phase 2 — `plan` ✅
+Tool restriction enforces separation and makes each agent cheaper. Scout is **not** reused because scout has all 6 tools and is purpose-built for discovery (not debate/defense mode).
 
-**Skill**: `.pi/skills/plan.md`
+### Model selection
 
-Spawns `tech-planner` sub-agent. Converts discovery into vertical slices with task breakdown.
+All 3 research agents use `opencode-go/deepseek-v4-flash` (cheap, sufficient for retrieval + formatting). The main model (user's session model) does the synthesis.
 
-**Output**: `.skynex/{slice}/plan.md`
+### Skill vs. hook injection
 
-### Phase 3 — `build` ✅
+The research workflow is injected via `before_agent_start` hook (same as triage) because:
+- It must be invisible to the user — no command to type after `/skynex:research`
+- Injection is conditional on mode state (only when active)
+- This mirrors the exact pattern already working in production for triage
 
-**Skill**: `.pi/skills/build.md`
+The `skills/skynex-research/SKILL.md` is a **supplementary skill** the injected prompt tells the main model to follow — it documents the synthesis protocol, not the invocation. The hook injects the instructions; the skill is the contract.
 
-Iterates plan steps. Per step: spawns `coder` sub-agent, then `verifier`, retries max 2 if verifier fails.
+### Files to create (NEW)
 
-**Protections active**: iron-law (TDD), production-gate (dangerous commands).
+| File | Type |
+|---|---|
+| `extensions/skynex-research/index.ts` | Pi extension entry point |
+| `extensions/skynex-research/types.ts` | ResearchMode state types |
+| `extensions/skynex-research/dispatcher.ts` | Pure-function: build system-prompt hint |
+| `extensions/skynex-research/dispatcher.test.ts` | Unit tests (pure functions) |
+| `extensions/skynex-research/index.test.ts` | Command registration + state tests |
+| `assets/agents/research-neurox.md` | Neurox-only search agent |
+| `assets/agents/research-web.md` | Web-only search agent |
+| `assets/agents/research-code.md` | Codebase-only search agent |
+| `skills/skynex-research/SKILL.md` | Synthesis protocol for the main model |
 
-### Phase 4 — `validate` ✅
+### Files to modify (MODIFIED)
 
-**Skill**: `.pi/skills/validate.md`
-
-Spawns `test-reviewer`, `security` (×2 parallel dual-judge), `skill-validator`. Re-judgment up to 2 iterations.
-
-**Output**: `.skynex/{slice}/validation.md`. Session saved to Neurox.
-
-### Sub-agents ✅
-
-- `scout.md` — context discovery
-- `tech-planner.md` — technical plan from discovery
-- `coder.md` — implementation per plan
-- `verifier.md` — post-build verification
-- `test-reviewer.md` — test quality audit
-- `security.md` — security review (× 2 in validate phase)
-- `skill-validator.md` — convention audit
-
-### Sprint 2 Deliverables ✅
-
-- 4 skills (discover/plan/build/validate)
-- 7 sub-agent definitions (scout, tech-planner, coder, verifier, test-reviewer, security, skill-validator)
-- Medium path golden evals (`evals/golden/medium-path/`)
-- End-to-end test: ✅ verified working
-
----
-
-## Sprint 3 — Substantial Path ✅ DONE
-
-**Original plan**: 9 phase extensions at `extensions/phases/substantial/*.ts`  
-**Actual**: 6-phase flow via same skills + sub-agents architecture. Merged PR #3 (squash commit c9d02b1), fixes PR #4 (cfaea6d).
-
-**Goal**: 6-phase workflow for ambiguous, cross-module, risky changes. Full skynex-pi capability.
-
-### Why 6 phases, not 9?
-
-Dropped `calibrate` (one-shot tool output, not an agent decision) and `explore` (redundant with discover). Merged `architect` into `specify` as parallel sub-agents.
-
-### Phase 1 — `discover` ✅
-
-**Skill**: `.pi/skills/discover.md`
-
-Same as medium path. Invokes `scout` sub-agent.
-
-### Phase 2 — `propose` ✅
-
-**Skill**: `.pi/skills/propose.md` (NEW)
-
-1-page proposal (Opus model). Invokes `product-planner` sub-agent solo.
-
-**HITL gate**: Human approves before continuing.
-
-**Output**: `.skynex/{slice}/proposal.md`
-
-### Phase 3 — `specify` ✅
-
-**Skill**: `.pi/skills/specify.md` (NEW)
-
-Full requirements + acceptance criteria + edge cases. Invokes **`product-planner` + `architect` in parallel**.
-
-**Output**: `.skynex/{slice}/spec.md`
-
-### Phase 4 — `plan` ✅
-
-**Skill**: `.pi/skills/plan.md`
-
-Triage checks slice gate: if `medium` path, skip to phase 5 (build). If `substantial`, tech-planner reads SPEC and produces PLAN.
-
-**HITL gate**: Unified gate (approve proposal + spec + plan together).
-
-**Output**: `.skynex/{slice}/plan.md`
-
-### Phase 5 — `build` ✅
-
-**Skill**: `.pi/skills/build.md`
-
-Sequential per-slice, parallel where independent. `coder` + `verifier` chain. Iron Law + Production Gate active throughout.
-
-### Phase 6 — `validate` ✅
-
-**Skill**: `.pi/skills/validate.md`
-
-`test-reviewer` + `security` (×2) + `skill-validator`, all in parallel (4 agents at once).
-
-**Output**: `.skynex/{slice}/validation.md`
-
-### New sub-agents ✅
-
-- `product-planner.md` — proposals + specs
-- `architect.md` — technical design (data flow, modules, tradeoffs, risks)
-
-### New extension ✅
-
-- `archive.md` — Post-completion hook (session_shutdown). Auto-triggers archivist sub-agent to synthesize Neurox observations.
-
-### Sprint 3 Deliverables ✅
-
-- 2 new skills (propose, specify)
-- 2 new sub-agents (product-planner, architect)
-- 1 new extension (archive)
-- Substantial path golden evals (`evals/golden/substantial-path/`)
-- End-to-end test: ✅ verified working
-- Sprint 3.1 fixes (PR #4): integration polish, type safety
+| File | Change |
+|---|---|
+| `package.json` | Add `"./extensions/skynex-research"` to `pi.extensions` array |
+| `tsconfig.json` | Confirm `extensions/**/*.ts` glob includes new extension (likely already covered) |
 
 ---
 
-## Sprint 4 — Team Polish ⚠️ PARTIAL
+## Implementation Steps
 
-**Original plan**: 5 items (status-bar, afk-runner, team onboarding, golden suite, cross-provider fallback)
+### Step 1: Types — `extensions/skynex-research/types.ts`
 
-### S4-1 — Skill auto-refresh ✅ DONE
+- **What**: Define `ResearchMode`, `ResearchSessionState`, and `ResearchEnvelope` types.
+- **Why**: Shared type contract between `index.ts`, `dispatcher.ts`, and tests. Pure module with no imports from `@earendil-works`.
+- **Where**: `extensions/skynex-research/types.ts` (NEW)
+- **How**:
 
-**PR #6**: Skill registry now auto-refreshes on SKILL.md change.
+```typescript
+// extensions/skynex-research/types.ts
 
-### S4-4 — Golden eval suite ✅ DONE
+/**
+ * Whether research mode is active for this session.
+ */
+export type ResearchMode = "active" | "inactive";
 
-**PR #7**: Medium-path + all-paths coverage. Baseline metrics: tokens per path, time per phase.
+/**
+ * Per-session state stored in the module-level Map.
+ */
+export interface ResearchSessionState {
+  /** Whether the user has activated research mode. */
+  mode: ResearchMode;
+  /** ISO timestamp when mode was last toggled. */
+  toggledAt: string;
+}
 
-### S4-5 — Smart-zone thresholds tuned ✅ DONE
+/**
+ * Structured envelope returned by each research sub-agent.
+ * The main model reads all 3 and synthesizes a verdict.
+ */
+export interface ResearchEnvelope {
+  /** Concise list of findings from this agent's source domain. */
+  findings: string[];
+  /** One sentence: why these findings are relevant to the user's question. */
+  defense: string;
+  /** Origin references: Neurox IDs, URLs, or file paths. */
+  sources: string[];
+}
+```
 
-**PR #5**: Thresholds adjusted to 60K/80K (from 80K/100K). Validated with real sessions.
-
-### S4-2 — Status-bar `[-]` DISCARDED
-
-**Reason**: Pi 0.75 does not support terminal layout splits. Feature not feasible without forking Pi.
-
-### S4-2 — AFK-runner `[-]` DISCARDED
-
-**Reason**: Design too risky (auto-confirm on dangerous commands). Deferred indefinitely.
-
-### S4-3 — Team onboarding `[ ]` NOT DONE
-
-**Reason**: Lower priority after substantial path shipped. Can pick up post-public-release.
-
-### S4-5 — Cross-provider fallback `[ ]` NOT DONE
-
-**Reason**: Stretch goal. Team is fine with Anthropic-only for now.
-
-### Sprint 4 Deliverables ⚠️
-
-- ✅ Auto-refresh skill registry on SKILL.md change
-- ✅ Golden eval suite (medium + all paths)
-- ✅ Smart-zone tuned to 60K/80K
-- ❌ Status-bar (not feasible)
-- ❌ AFK-runner (too risky)
-- ❌ Team onboarding (deferred)
-- ❌ Cross-provider (deferred)
-
----
-
-## Final Deliverables
-
-| Component | Status | Location | Tests |
-|-----------|--------|----------|-------|
-| Triage | ✅ | `extensions/core/triage/` | 25 |
-| Iron Law | ✅ | `extensions/core/iron-law/` | 53 |
-| Skill Registry | ✅ | `extensions/core/skill-registry/` | 34 |
-| Smart Zone | ✅ | `extensions/core/smart-zone/` | 19 |
-| Neurox Tool | ✅ | `extensions/core/neurox-tool/` | 18 |
-| Production Gate | ✅ | `extensions/core/production-gate/` | 51 |
-| Medium Path (4 phases) | ✅ | `.pi/skills/` | (golden evals) |
-| Substantial Path (6 phases) | ✅ | `.pi/skills/` | (golden evals) |
-| Archive Extension | ✅ | `extensions/core/archive/` | (integrated) |
-| **TOTAL TESTS** | | | **301** |
+- **Acceptance**: `pnpm typecheck` passes with this file. No imports from `@earendil-works/pi-coding-agent` (pure types).
+- **Status**: [ ] pending
 
 ---
 
-## Architecture: Why Skills + Sub-agents?
+### Step 2: Dispatcher — `extensions/skynex-research/dispatcher.ts`
 
-The original plan described phase extensions as TypeScript files (`extensions/phases/medium/discover.ts`, etc.). Implementation revealed a better architecture:
+- **What**: Pure functions that (a) build the `before_agent_start` system prompt injection when research mode is active, and (b) format the user-facing notification.
+- **Why**: Pure functions are directly unit-testable without a Pi mock. Mirrors the `buildWorkflowHint` pattern in triage.
+- **Where**: `extensions/skynex-research/dispatcher.ts` (NEW)
+- **How**:
 
-1. **Skills** are Pi-native tools. Each skill is a `.pi/skills/*.md` file that invokes sub-agents.
-2. **Sub-agents** are trusted version-controlled files (`.pi/agents/*.md`) that execute deterministic work (no LLM feedback loops).
-3. **This decouples workflow logic from agent implementation** — we can update sub-agents without recompiling extensions.
-4. **Per-agent skill subsets** (via skill-registry) reduce token overhead and make auditing easier.
+```typescript
+// extensions/skynex-research/dispatcher.ts
 
-Benefits:
-- ✅ Simpler to test (agents are black boxes, skills compose them)
-- ✅ Easier to customize (edit sub-agent prompts without touching TypeScript)
-- ✅ Lower token cost (per-agent skill filtering)
-- ✅ Scales to N agents without architecture changes
+import type { ResearchMode } from "./types.js";
 
----
+/**
+ * Returns the system-prompt block to inject when research mode is active.
+ * Returns undefined when mode is inactive (no injection).
+ */
+export function buildResearchHint(mode: ResearchMode): string | undefined {
+  if (mode !== "active") return undefined;
 
-## Non-goals (Final)
+  return [
+    "## RESEARCH MODE: active",
+    "The user has activated research mode. For EVERY message, you MUST:",
+    "",
+    "1. Invoke 3 research sub-agents IN PARALLEL via a single subagent({tasks: [...]}) call:",
+    "   - research-neurox: searches Neurox memory for prior decisions and context",
+    "   - research-web:    searches the web for external information",
+    "   - research-code:   searches the codebase for relevant patterns and files",
+    "",
+    "2. Each agent returns a YAML envelope with: findings, defense, sources.",
+    "   Read ALL 3 envelopes before responding.",
+    "",
+    "3. Synthesize a final verdict: combine findings from all 3 sources, resolve",
+    "   contradictions, and give the user a clear answer with source attribution.",
+    "",
+    "4. If findings are relevant and durable, save to Neurox:",
+    "   neurox_save({ title, content, observation_type: 'discovery', kind: 'semantic',",
+    "     tags: ['research-mode'], namespace: <project> })",
+    "",
+    "IMPORTANT: Do NOT skip the subagent call. Even for short questions, all 3 agents",
+    "must run. This is the user's explicit contract for research mode.",
+    "",
+    "Invoke the /skill:skynex-research synthesis protocol after agents return.",
+  ].join("\n");
+}
 
-- ❌ Persona system — team context doesn't need it
-- ❌ Banner ASCII art — decoration
-- ❌ Copy of Gentle SDD naming — own brand (calibrate/explore/propose/specify/architect/slice/build/validate/archive)
-- ❌ Custom MCP integration — `pi-mcp-adapter` works
-- ❌ Custom sub-agent system — `pi-sub-agent` works
-- ❌ Go CLI for Pi — npm/pnpm install simpler
-- ❌ Web UI dashboard — terminal-only
-- ❌ Multi-user collaboration — single dev per session
-- ❌ Status-bar layout split — Pi doesn't support it
-- ❌ AFK auto-confirm runner — too risky for production workflow
+/**
+ * One-line notification shown to the user when mode changes.
+ */
+export function formatResearchNotification(mode: ResearchMode): string {
+  if (mode === "active") {
+    return "🔬 RESEARCH MODE: active — next messages will dispatch 3 parallel agents (neurox + web + code)";
+  }
+  return "🔬 RESEARCH MODE: inactive — back to normal conversation";
+}
+```
 
----
-
-## Risks & Mitigations (Final)
-
-| Risk | Mitigation | Status |
-|------|-----------|--------|
-| Pi 0.75 API changes | Pinned version. Upgrade path documented. | ✅ Stable |
-| Team adoption friction | Small path approachable day 1. Docs TBD. | ⚠️ Docs deferred |
-| Iron Law too strict | Whitelist permissive. Override logged. | ✅ Tuned mid-sprint |
-| Production Gate false positives | Custom patterns extensible. Audit log shows firing. | ✅ Proven in use |
-| Skill registry drift | Feedback loop auto-refreshes. Drift detector monitors. | ✅ Implemented |
-| Sub-agent isolation | Uses Pi's native isolation. No cross-contamination. | ✅ Verified E2E |
-
----
-
-## Acceptance Checklist ✅
-
-- [x] All Sprint 1 items complete (6 extensions)
-- [x] Sprint 2 describes skills+sub-agents (not phase extensions)
-- [x] Sprint 3 describes 6-phase flow (not 9)
-- [x] Sprint 4 shows done/discarded/pending
-- [x] No references to `phases/medium/*.ts` or `phases/substantial/*.ts`
-- [x] File length <250 lines (currently 350 — honest accounting of what shipped)
-- [x] No test changes needed (pure .md rewrite)
-
----
-
-## 🤔 Pending Discussion — Triage Classification Strategy
-
-> Added 2026-05-21. Surfaced by E2E feedback after 0.4.0.
-
-### The bug
-
-User asked `"puedes usar jira?"` (capability question about the agent).
-Triage classified it as **MEDIUM** because the word `jira` matched
-`risk_keywords`. Consequence: model called `neurox_session_start` and
-`neurox_recall` for an irrelevant context (payroll turnos), wasting
-tokens + adding noise.
-
-**Root cause**: `risk_keywords` matches on **topic nouns** (jira, auth,
-payment) regardless of whether there's any **intent to do work**.
-Capability questions get treated as risky tasks.
-
-### Research findings (skynex-pi context)
-
-Reviewed: gentle-pi (`isSddPreflightTrigger`), Anthropic "Building
-Effective Agents", Claude Code architecture, Pi ecosystem (rpiv,
-gentle, others).
-
-**Industry pattern**: Claude Code, Cursor, Aider do NOT pre-classify
-prompts. They hand the prompt to the model and let the model decide
-whether to use tools. Pre-classification is rare and brittle.
-
-Gentle-pi's `isSddPreflightTrigger` is the closest analog. Their
-documented stance:
-> "Natural-language requests are classified by the parent agent, not
-> by brittle runtime regexes."
-
-### Options evaluated
-
-| # | Approach | Hardcoded? | Cost | Drift |
-|---|---|---|---|---|
-| A | Add capability-question regex on top of existing classifier | Yes | 0ms | High (every new question pattern needs a regex) |
-| B | LLM intent classifier (Haiku call per prompt) | No | ~200ms + $0.0001 per prompt | None |
-| C | Remove implicit classification; delegate to model | N/A — no code | 0ms | None |
-| D | **Hybrid**: explicit triggers only (slash commands, code blocks, file paths). No keyword/verb classification. | Minimal | 0ms | Low |
-
-### The honest tradeoffs
-
-**Option A** is what I instinctively proposed. It IS hardcoded text.
-Patches one symptom (`puedes usar jira?`) but leaves the brittle
-keyword-matching logic in place. Will hit the same bug with new
-vocabulary in 6 months.
-
-**Option B** is "no hardcoded text" but introduces:
-- 200ms latency on every prompt
-- ~$0.0001 per prompt cost
-- Another point of failure (Haiku down → fallback to what?)
-- The classifier itself becomes a system to maintain
-
-**Option C** is what Claude Code does. Pure prompt → model decides.
-- Loses: auto-invocation of `/skill:discover` on imperative tasks
-- Gains: zero drift, zero false-positives, simpler codebase
-- User trade-off: must invoke skills explicitly (`/skill:build agrega
-  isValidEmail` instead of just `agrega isValidEmail`)
-
-**Option D (hybrid)** keeps the magic where it's safe:
-- Slash commands → workflow injection (clear intent)
-- Code blocks pasted → code-review skill hint (clear intent)
-- File paths in prompt → context hint (clear intent)
-- Everything else → no classification, model decides
-
-### Test matrix (10 cases)
-
-| Prompt | Truth | A (caps regex) | C (no classify) | D (hybrid) |
-|---|---|---|---|---|
-| `puedes usar jira?` | LIGHT | ✓ | ✓ | ✓ |
-| `qué archivos hay en src/?` | LIGHT | ✗ MEDIUM | ✓ | ✓ |
-| `¿podrías refactorizar UserService?` | MEDIUM | ✗ LIGHT | (model) | (model) |
-| `fix the auth bug in src/auth.ts` | HARD | ✗ MEDIUM | (model) | ✓ (file-path) |
-| `agrega isValidEmail con tests` | MEDIUM | ✗ LIGHT | (model) | (model) |
-| `hola` | LIGHT | ✓ | ✓ | ✓ |
-| `/skill:build add payment flow` | HARD | ✓ | (no skill invoked) | ✓ (slash) |
-| `mira esto: \`\`\`ts...\`\`\`` | MEDIUM | ✗ LIGHT | (model) | ✓ (code-block) |
-| `rebuild auth para SAML SSO` | HARD | (matches `auth`) | (model) | (model) |
-| `tweak the migration` | MEDIUM | ✗ LIGHT | (model) | (model) |
-
-Note for C and D: "(model)" means the model receives the raw prompt
-without a workflow hint. The model can still decide to use skills —
-it just won't be auto-injected.
-
-### What's NOT decided
-
-1. **Which option ships?** Each has real tradeoffs. None is "obviously
-   correct" without testing on real traffic.
-2. **Telemetry first?** Log every triage decision for 2 weeks (signals
-   + reason + outcome). Then decide based on data, not intuition.
-3. **Behavioral change risk**: changing default behavior breaks user
-   muscle memory. Need version bump signaling + deprecation.
-4. **Backwards compat**: do we keep `auto_detect`-style env var for
-   power users who want the keyword classifier?
-
-### Decision parking
-
-This is a non-trivial design decision. **Not changing anything until**:
-
-- [ ] Telemetry added (log triage decisions for ≥2 weeks)
-- [ ] Real false-positive count measured (not just the one example)
-- [ ] Real false-negative count measured (tasks that would now be
-      missed if classifier removed)
-- [ ] User confirmation that workflow auto-invocation is/isn't valued
-
-Until then: current behavior stays (default MEDIUM with keyword
-matching). User aware of the false-positive on capability questions
-and can ignore Neurox dumps or rephrase prompts as needed.
-
-### Suggested next sprint (when this is tackled)
-
-1. Add `logTriageDecision()` to `extensions/triage/index.ts` — write
-   to `.skynex/triage-decisions.jsonl` (gitignored)
-2. Run for 2 weeks of normal usage
-3. Analyze the log: signal distribution, false-positive rate, missed
-   tasks
-4. Choose option based on data
-5. Bump to 0.6.0 if behavioral change
-6. Document migration in CHANGELOG
-
-### Why this is parked, not done
-
-The user asked: "puedes hacerlo?" My instinct was to patch quickly
-(Option A). On reflection, the patch would have replaced one brittle
-regex with another, with the same drift problem in a few months.
-Better to surface the design question, gather real data, and decide
-based on evidence.
-
-The bug is annoying but not blocking — current users (just me) can
-adapt prompts.
+- **Acceptance**: Both functions are exported. `buildResearchHint("inactive")` returns `undefined`. `buildResearchHint("active")` returns a non-empty string containing `"research-neurox"`, `"research-web"`, `"research-code"`.
+- **Status**: [ ] pending
 
 ---
 
-## References
+### Step 3: Tests — `extensions/skynex-research/dispatcher.test.ts`
 
-- Main branch: `8d143fc` (HEAD)
-- PR #2: Medium path (squash `8175f6d`)
-- PR #3: Substantial path (squash `c9d02b1`)
-- PR #4: Sprint 3.1 fixes (`cfaea6d`)
-- PR #5: Smart-zone tuning
-- PR #6: Skill auto-refresh
-- PR #7: Golden eval suite
-- `docs/design/request-flow.md` — canonical flow
-- `docs/design/production-gate.md` — production gate spec
-- `.pi/AGENTS.md` — workflow + agent reference
+- **What**: Unit tests for both dispatcher functions (pure, no Pi runtime).
+- **Why**: TDD discipline + regression protection. Pattern: `node:test` + `node:assert/strict`, no mocks needed.
+- **Where**: `extensions/skynex-research/dispatcher.test.ts` (NEW)
+- **How**:
+
+```typescript
+// extensions/skynex-research/dispatcher.test.ts
+
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { buildResearchHint, formatResearchNotification } from "./dispatcher.js";
+
+// ─── buildResearchHint ───────────────────────────────────────────────────────
+
+test("buildResearchHint: returns undefined when inactive", () => {
+  assert.equal(buildResearchHint("inactive"), undefined);
+});
+
+test("buildResearchHint: returns string when active", () => {
+  const hint = buildResearchHint("active");
+  assert.ok(typeof hint === "string" && hint.length > 0);
+});
+
+test("buildResearchHint: active hint references all 3 agent names", () => {
+  const hint = buildResearchHint("active")!;
+  assert.ok(hint.includes("research-neurox"));
+  assert.ok(hint.includes("research-web"));
+  assert.ok(hint.includes("research-code"));
+});
+
+test("buildResearchHint: active hint mentions subagent tasks pattern", () => {
+  const hint = buildResearchHint("active")!;
+  assert.ok(hint.includes("tasks:"));
+});
+
+test("buildResearchHint: active hint mentions neurox_save", () => {
+  const hint = buildResearchHint("active")!;
+  assert.ok(hint.includes("neurox_save"));
+});
+
+test("buildResearchHint: active hint mentions RESEARCH MODE header", () => {
+  const hint = buildResearchHint("active")!;
+  assert.ok(hint.includes("## RESEARCH MODE: active"));
+});
+
+// ─── formatResearchNotification ─────────────────────────────────────────────
+
+test("formatResearchNotification: active includes agent list", () => {
+  const msg = formatResearchNotification("active");
+  assert.ok(msg.includes("neurox"));
+  assert.ok(msg.includes("web"));
+  assert.ok(msg.includes("code"));
+});
+
+test("formatResearchNotification: inactive signals return to normal", () => {
+  const msg = formatResearchNotification("inactive");
+  assert.ok(msg.includes("inactive") || msg.includes("normal"));
+});
+
+test("formatResearchNotification: both return non-empty strings", () => {
+  assert.ok(formatResearchNotification("active").length > 0);
+  assert.ok(formatResearchNotification("inactive").length > 0);
+});
+```
+
+- **Acceptance**: `pnpm exec tsx --test extensions/skynex-research/dispatcher.test.ts` → all 9 tests pass.
+- **Status**: [ ] pending
 
 ---
 
-**Last deployed**: 2026-05-21  
-**Next phase**: Team onboarding docs + public release prep
+### Step 4: Extension entry — `extensions/skynex-research/index.ts`
+
+- **What**: The Pi extension that registers hooks and commands. State tracked in `sessionResearchStore`.
+- **Why**: This is the runtime wiring that makes the mode sticky, injects the system prompt, and registers `/skynex:research` and `/skynex:research:status`.
+- **Where**: `extensions/skynex-research/index.ts` (NEW)
+- **How**:
+
+```typescript
+// extensions/skynex-research/index.ts
+
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { buildResearchHint, formatResearchNotification } from "./dispatcher.js";
+import type { ResearchSessionState } from "./types.js";
+
+/**
+ * Per-session state. Mirrors triage's sessionTriageStore pattern.
+ * Key: sessionFile path (or ephemeral fallback).
+ * Value: current mode state for this session.
+ */
+const sessionResearchStore = new Map<string, ResearchSessionState>();
+
+export default function (pi: ExtensionAPI): void {
+  // Initialize state on session start (mode starts inactive)
+  pi.on("session_start", (_event, ctx) => {
+    const sessionId =
+      ctx.sessionManager.getSessionFile() ?? `ephemeral-${process.pid}`;
+    sessionResearchStore.set(sessionId, {
+      mode: "inactive",
+      toggledAt: new Date().toISOString(),
+    });
+  });
+
+  // Inject research mode hint into system prompt when mode is active
+  pi.on("before_agent_start", async (event, _ctx) => {
+    // We derive sessionId inside the event handler at call time
+    // because session_start may not have fired for all Pi invocations
+    const sessionId = _ctx.sessionManager.getSessionFile() ?? `ephemeral-${process.pid}`;
+    const state = sessionResearchStore.get(sessionId);
+    const mode = state?.mode ?? "inactive";
+
+    const hint = buildResearchHint(mode);
+    if (!hint) return undefined;
+
+    return {
+      systemPrompt: `${event.systemPrompt}\n\n${hint}`,
+    };
+  });
+
+  // Clean up on session end
+  pi.on("session_shutdown", (_event, ctx) => {
+    const sessionId =
+      ctx.sessionManager.getSessionFile() ?? `ephemeral-${process.pid}`;
+    sessionResearchStore.delete(sessionId);
+  });
+
+  // ── Commands ───────────────────────────────────────────────────────────────
+
+  /**
+   * /skynex:research — toggle research mode on/off for this session.
+   *
+   * - First call (or when inactive): activates research mode
+   * - Call when already active: deactivates (returns to normal)
+   * Usage: /skynex:research
+   */
+  pi.registerCommand("skynex:research", {
+    description:
+      "Activate (or deactivate) research mode. When active, every message dispatches 3 parallel sub-agents (neurox + web + code). Mode is sticky until toggled off or session ends.",
+    handler: async (_args, ctx) => {
+      const sessionId =
+        ctx.sessionManager.getSessionFile() ?? `ephemeral-${process.pid}`;
+
+      const current = sessionResearchStore.get(sessionId);
+      const newMode = current?.mode === "active" ? "inactive" : "active";
+
+      sessionResearchStore.set(sessionId, {
+        mode: newMode,
+        toggledAt: new Date().toISOString(),
+      });
+
+      ctx.ui.notify(formatResearchNotification(newMode), "info");
+    },
+  });
+
+  /**
+   * /skynex:research:status — show current research mode state.
+   */
+  pi.registerCommand("skynex:research:status", {
+    description: "Show the current research mode state for this session.",
+    handler: async (_args, ctx) => {
+      const sessionId =
+        ctx.sessionManager.getSessionFile() ?? `ephemeral-${process.pid}`;
+      const state = sessionResearchStore.get(sessionId);
+
+      if (!state) {
+        ctx.ui.notify("No research mode state — send a message first.", "warning");
+        return;
+      }
+
+      ctx.ui.notify(
+        [
+          `Research mode: ${state.mode.toUpperCase()}`,
+          `Toggled at:    ${state.toggledAt}`,
+        ].join("\n"),
+        "info",
+      );
+    },
+  });
+}
+
+// ── Exported helpers (for tests + future phase extensions) ──────────────────
+
+/**
+ * Returns the research mode state for a session, or undefined if not tracked.
+ * Exported for use in tests and future integrations.
+ */
+export function getResearchMode(
+  sessionFile: string | undefined,
+): ResearchSessionState | undefined {
+  const sessionId = sessionFile ?? `ephemeral-${process.pid}`;
+  return sessionResearchStore.get(sessionId);
+}
+
+/**
+ * Set mode directly — used in tests to seed state without going through commands.
+ * @internal
+ */
+export function _setResearchMode(
+  sessionFile: string | undefined,
+  state: ResearchSessionState,
+): void {
+  const sessionId = sessionFile ?? `ephemeral-${process.pid}`;
+  sessionResearchStore.set(sessionId, state);
+}
+```
+
+- **Acceptance**: `pnpm typecheck` passes. Extension exports `default`, `getResearchMode`, `_setResearchMode`.
+- **Status**: [ ] pending
+
+---
+
+### Step 5: Extension index tests — `extensions/skynex-research/index.test.ts`
+
+- **What**: Unit tests for mode state management and command behavior (without a live Pi runtime).
+- **Why**: Verifies the Map logic, toggle behavior, and state cleanup without needing an E2E session.
+- **Where**: `extensions/skynex-research/index.test.ts` (NEW)
+- **How**:
+
+```typescript
+// extensions/skynex-research/index.test.ts
+
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { getResearchMode, _setResearchMode } from "./index.js";
+
+const SESSION_A = "/tmp/session-a.json";
+const SESSION_B = "/tmp/session-b.json";
+
+// ─── State seeding and retrieval ─────────────────────────────────────────────
+
+test("getResearchMode: returns undefined for unknown session", () => {
+  assert.equal(getResearchMode("/tmp/never-seen.json"), undefined);
+});
+
+test("getResearchMode: returns state after _setResearchMode", () => {
+  _setResearchMode(SESSION_A, { mode: "active", toggledAt: "2026-01-01T00:00:00.000Z" });
+  const state = getResearchMode(SESSION_A);
+  assert.ok(state !== undefined);
+  assert.equal(state.mode, "active");
+});
+
+// ─── Multi-session isolation ──────────────────────────────────────────────────
+
+test("sessions are isolated: session A active does not affect session B", () => {
+  _setResearchMode(SESSION_A, { mode: "active", toggledAt: new Date().toISOString() });
+  _setResearchMode(SESSION_B, { mode: "inactive", toggledAt: new Date().toISOString() });
+
+  assert.equal(getResearchMode(SESSION_A)?.mode, "active");
+  assert.equal(getResearchMode(SESSION_B)?.mode, "inactive");
+});
+
+// ─── Toggle logic (simulated via _setResearchMode) ────────────────────────────
+
+test("toggle: inactive → active", () => {
+  _setResearchMode(SESSION_A, { mode: "inactive", toggledAt: new Date().toISOString() });
+  const before = getResearchMode(SESSION_A)!;
+  const newMode = before.mode === "active" ? "inactive" : "active";
+  _setResearchMode(SESSION_A, { mode: newMode, toggledAt: new Date().toISOString() });
+  assert.equal(getResearchMode(SESSION_A)?.mode, "active");
+});
+
+test("toggle: active → inactive", () => {
+  _setResearchMode(SESSION_A, { mode: "active", toggledAt: new Date().toISOString() });
+  const before = getResearchMode(SESSION_A)!;
+  const newMode = before.mode === "active" ? "inactive" : "active";
+  _setResearchMode(SESSION_A, { mode: newMode, toggledAt: new Date().toISOString() });
+  assert.equal(getResearchMode(SESSION_A)?.mode, "inactive");
+});
+
+// ─── Ephemeral fallback ───────────────────────────────────────────────────────
+
+test("undefined sessionFile uses process.pid-based ephemeral key", () => {
+  // Should not throw and should return undefined (no state seeded for this key)
+  const result = getResearchMode(undefined);
+  // We can't assert specific state here, but it must not throw
+  assert.ok(result === undefined || typeof result?.mode === "string");
+});
+```
+
+- **Acceptance**: `pnpm exec tsx --test extensions/skynex-research/index.test.ts` → all 6 tests pass.
+- **Status**: [ ] pending
+
+---
+
+### Step 6: Three research sub-agents
+
+- **What**: Create 3 minimal agent `.md` files, each tool-restricted to a single source domain.
+- **Why**: Tool restriction enforces separation, prevents agents from leaking into each other's domain, and makes each agent cheaper to run.
+- **Where**: `assets/agents/research-neurox.md`, `assets/agents/research-web.md`, `assets/agents/research-code.md` (all NEW)
+- **How**:
+
+#### `assets/agents/research-neurox.md`
+
+```markdown
+---
+name: research-neurox
+description: Memory research agent. Searches Neurox for prior decisions, patterns, and context relevant to the user's question. Tool-restricted to neurox_recall only.
+model: opencode-go/deepseek-v4-flash
+tools: neurox_recall
+---
+
+You are the **research-neurox** agent. Your only source of truth is Neurox memory.
+
+## Task
+
+Given the user's question (provided in your task prompt), search Neurox for relevant prior decisions, patterns, conventions, and context.
+
+## Protocol
+
+1. Run **cross-namespace** recall first (no `namespace` arg) to surface knowledge from all projects.
+2. If fewer than 3 relevant results, retry with 2-3 query variations (synonyms, related terms).
+3. Surface the 3-5 most relevant observations.
+4. State clearly: what namespace each observation came from, why it is relevant.
+
+## Return envelope (mandatory YAML — last thing in your reply)
+
+```yaml envelope
+findings:
+  - "<key finding from memory 1>"
+  - "<key finding from memory 2>"
+defense: "<one sentence: why these Neurox findings are relevant to the question>"
+sources:
+  - "neurox:<observation-id> (namespace: <namespace>)"
+  - "neurox:<observation-id> (namespace: <namespace>)"
+status: ready | empty
+```
+
+If Neurox has no relevant results after 2-3 attempts, emit `status: empty` with `findings: []` and `defense: "No relevant prior context found in Neurox."`.
+
+Emit the envelope and stop.
+```
+
+#### `assets/agents/research-web.md`
+
+```markdown
+---
+name: research-web
+description: Web research agent. Searches the internet for external information relevant to the user's question. Tool-restricted to web_search and fetch_content only.
+model: opencode-go/deepseek-v4-flash
+tools: web_search, fetch_content
+---
+
+You are the **research-web** agent. Your only source of truth is the internet.
+
+## Task
+
+Given the user's question (provided in your task prompt), find relevant external information: documentation, prior art, best practices, advisories, or examples.
+
+## Protocol
+
+1. Formulate 1-2 specific search queries (not broad keywords).
+2. Run `web_search` for each query.
+3. Fetch the top 1-2 most relevant URLs with `fetch_content` for depth.
+4. Summarize key findings in ≤5 bullet points.
+
+## Return envelope (mandatory YAML — last thing in your reply)
+
+```yaml envelope
+findings:
+  - "<key web finding 1>"
+  - "<key web finding 2>"
+defense: "<one sentence: why these web findings are relevant to the question>"
+sources:
+  - "<url 1>"
+  - "<url 2>"
+queries_used:
+  - "<query 1>"
+  - "<query 2>"
+status: ready | empty
+```
+
+If web search returns no relevant results, emit `status: empty` with `findings: []`.
+
+Emit the envelope and stop.
+```
+
+#### `assets/agents/research-code.md`
+
+```markdown
+---
+name: research-code
+description: Codebase research agent. Searches the local repository for patterns, files, and implementations relevant to the user's question. Tool-restricted to read, grep, glob only.
+model: opencode-go/deepseek-v4-flash
+tools: read, grep, glob
+---
+
+You are the **research-code** agent. Your only source of truth is the local codebase.
+
+## Task
+
+Given the user's question (provided in your task prompt), find relevant files, patterns, existing implementations, tests, or conventions in the codebase.
+
+## Protocol
+
+1. Use `glob` to find files that might be relevant (by name pattern or directory).
+2. Use `grep` to find specific patterns, function names, or keywords.
+3. Read the 1-3 most relevant files (entry points, public APIs, tests).
+4. Note conventions, naming patterns, and existing solutions.
+
+## Return envelope (mandatory YAML — last thing in your reply)
+
+```yaml envelope
+findings:
+  - "<key codebase finding 1>"
+  - "<key codebase finding 2>"
+defense: "<one sentence: why these code findings are relevant to the question>"
+sources:
+  - "<file-path>:<line-number or function>"
+  - "<file-path>:<line-number or function>"
+status: ready | empty
+```
+
+If no relevant code found, emit `status: empty` with `findings: []`.
+
+Emit the envelope and stop.
+```
+
+- **Acceptance**: All 3 `.md` files exist under `assets/agents/`. Each has a valid YAML frontmatter with `name`, `description`, `model`, and `tools`. `pnpm run verify-package` passes (the script checks for valid frontmatter in all agent files).
+- **Status**: [ ] pending
+
+---
+
+### Step 7: Research synthesis skill — `skills/skynex-research/SKILL.md`
+
+- **What**: A skill file that documents the synthesis protocol the main model follows after all 3 agents return. This is referenced in the injected system prompt; it provides the structured contract.
+- **Why**: The `before_agent_start` hook tells the model to follow this skill. The skill encodes the synthesis pattern (how to read 3 envelopes, how to resolve contradictions, when to save to Neurox).
+- **Where**: `skills/skynex-research/SKILL.md` (NEW)
+- **How**:
+
+```markdown
+---
+name: skynex-research
+description: Research mode synthesis protocol. Called by the main model after 3 parallel research agents (neurox, web, code) return their envelopes. Synthesizes a final verdict with source attribution.
+---
+
+# skynex-research — Research Mode Synthesis
+
+> Use ONLY when research mode is active and you have received envelopes from
+> research-neurox, research-web, and research-code.
+
+## Compact Rules
+
+1. Read ALL 3 envelopes before writing anything — do not synthesize from 1 or 2
+2. Cite sources for every claim: `[Neurox: <id>]`, `[Web: <url>]`, `[Code: <path>]`
+3. Resolve contradictions explicitly — if Neurox says X and web says Y, surface the conflict
+4. Prioritize Neurox findings for project-internal decisions (they are ground truth for THIS repo)
+5. Prioritize web findings for external library/API questions
+6. Prioritize code findings for "what does the current codebase do?" questions
+7. If all 3 sources return empty, say so — do NOT hallucinate findings
+8. If any finding is reusable and durable, save to Neurox after synthesis
+9. Keep synthesis ≤10 bullet points — no walls of text
+10. Surface the `defense` from each agent (not just findings) — it tells the user WHY each source was relevant
+
+## Parallel invocation pattern
+
+```
+subagent({
+  agentScope: "project",
+  confirmProjectAgents: false,
+  tasks: [
+    {
+      agent: "research-neurox",
+      task: "Research: <user question verbatim>. Return findings envelope."
+    },
+    {
+      agent: "research-web",
+      task: "Research: <user question verbatim>. Return findings envelope."
+    },
+    {
+      agent: "research-code",
+      task: "Research: <user question verbatim>. Return findings envelope."
+    }
+  ]
+})
+```
+
+The `subagent` tool returns an array of 3 results in submission order. Wait for ALL 3 before synthesizing.
+
+## Synthesis format
+
+```
+## Research: <user question (≤80 chars)>
+
+**From memory (Neurox):**
+- <finding> [Neurox: <id>]
+- <finding> [Neurox: <id>]
+
+**From web:**
+- <finding> [Web: <url>]
+- <finding> [Web: <url>]
+
+**From codebase:**
+- <finding> [Code: <path>]
+- <finding> [Code: <path>]
+
+**Verdict:**
+<2-3 sentences synthesizing the answer. Resolve contradictions. State confidence level.>
+
+**Saved to Neurox:** yes | no (and why if not saved)
+```
+
+## When to save to Neurox
+
+Save if the synthesized finding is:
+- A new decision or pattern not previously recorded
+- Relevant beyond this session (future sessions would benefit)
+- Factual (not a one-off exploration answer)
+
+Do NOT save if:
+- All 3 sources were empty
+- The answer is already in Neurox (no duplicate saves)
+- The finding is ephemeral/debugging only
+
+## Anti-patterns
+
+- ❌ Synthesizing before ALL 3 envelopes are ready
+- ❌ Ignoring a source because it returned empty (report it as empty, don't skip)
+- ❌ Mixing findings and hallucinations (if you don't know, say you don't know)
+- ❌ Skipping source attribution (every claim needs a `[Source: ...]` tag)
+- ❌ Calling the 3 agents sequentially instead of in a single parallel `subagent({tasks:[...]})` call
+```
+
+- **Acceptance**: File exists. Contains `---` frontmatter with `name: skynex-research`. Contains `## Compact Rules` section with 10 rules. Contains the `subagent({tasks:[...]})` parallel invocation pattern. File ≤ 120 lines.
+- **Status**: [ ] pending
+
+---
+
+### Step 8: Register extension in `package.json`
+
+- **What**: Add `"./extensions/skynex-research"` to the `pi.extensions` array in `package.json`.
+- **Why**: Pi reads `package.json → pi.extensions` at startup to know which extensions to load. Without this, the extension file exists but Pi never activates it.
+- **Where**: `package.json` line 43–52 (MODIFIED)
+- **How**:
+
+Edit the `pi.extensions` array from:
+```json
+"pi": {
+  "extensions": [
+    "./extensions/triage",
+    "./extensions/iron-law",
+    "./extensions/skill-registry",
+    "./extensions/smart-zone",
+    "./extensions/neurox-tool",
+    "./extensions/production-gate",
+    "./extensions/archive",
+    "./extensions/skynex-installer"
+  ]
+}
+```
+
+To:
+```json
+"pi": {
+  "extensions": [
+    "./extensions/triage",
+    "./extensions/iron-law",
+    "./extensions/skill-registry",
+    "./extensions/smart-zone",
+    "./extensions/neurox-tool",
+    "./extensions/production-gate",
+    "./extensions/archive",
+    "./extensions/skynex-installer",
+    "./extensions/skynex-research"
+  ]
+}
+```
+
+Also update `description` field (optional but good hygiene):
+```json
+"description": "Multi-agent coding harness for Pi — triage + 17 skills + 11 sub-agents + 8 extensions. Full medium/substantial-path workflow with HITL gates, TDD enforcement, adversarial review, and research mode.",
+```
+
+- **Acceptance**: `node -e "const p=JSON.parse(require('fs').readFileSync('package.json','utf8')); console.log(p.pi.extensions.includes('./extensions/skynex-research'))"` prints `true`. `pnpm typecheck` still passes.
+- **Status**: [ ] pending
+
+---
+
+### Step 9: Full test suite verification
+
+- **What**: Run the full test suite and typecheck to confirm no regressions.
+- **Why**: New files must not break existing 307+ tests. Type correctness must be clean.
+- **Where**: Repo root
+- **How**:
+
+```bash
+# 1. Typecheck
+pnpm typecheck
+
+# 2. Run all tests (includes new skynex-research tests)
+pnpm test
+
+# Expected: existing tests + 9 new dispatcher tests + 6 new index tests = 322+ tests passing
+# Zero failures
+
+# 3. Verify package files (checks agent frontmatter)
+pnpm run verify-package
+
+# 4. Smoke-check the 3 agent files exist with correct frontmatter
+node -e "
+  const fs = require('fs');
+  ['research-neurox','research-web','research-code'].forEach(name => {
+    const content = fs.readFileSync(\`assets/agents/\${name}.md\`, 'utf8');
+    console.assert(content.includes('model: opencode-go/deepseek-v4-flash'), \`\${name}: missing model\`);
+    console.assert(content.includes('tools:'), \`\${name}: missing tools\`);
+    console.log(\`✓ \${name}.md valid\`);
+  });
+"
+
+# 5. Verify skill file exists
+node -e "require('fs').accessSync('skills/skynex-research/SKILL.md'); console.log('✓ skynex-research SKILL.md exists')"
+```
+
+- **Acceptance**: `pnpm typecheck` exits 0. `pnpm test` exits 0 with ≥ 322 tests passing. `pnpm run verify-package` exits 0 with 0 warnings (or 1 existing known warning about tdd-discipline).
+- **Status**: [ ] pending
+
+---
+
+## Verification
+
+```bash
+# Full test + type check
+pnpm typecheck && pnpm test
+
+# Individual dispatcher tests
+pnpm exec tsx --test extensions/skynex-research/dispatcher.test.ts
+
+# Individual index tests
+pnpm exec tsx --test extensions/skynex-research/index.test.ts
+
+# Verify package manifest
+pnpm run verify-package
+
+# Check extension is registered
+node -e "const p=JSON.parse(require('fs').readFileSync('package.json','utf8')); console.log(p.pi.extensions)"
+
+# Manual E2E: start Pi, type /skynex:research, confirm notification shows
+# Then ask a question and confirm 3 parallel agent calls appear in the tool trace
+```
+
+---
+
+## Out of Scope (Modes 2 and 3)
+
+The following are explicitly deferred to future planning sessions:
+
+- **Task-creation mode** (`/skynex:task`): grill-me workflow, Jira integration, task template generation
+- **Execution mode** (`/skynex:execute`): TDD enforcement, discover/plan/build/validate pipeline, PR review
+- Combining research mode with task-creation (research-first before creating tasks)
+- Any UI for browsing research history
+- Rate-limiting or cost-capping the 3 parallel agents
+- Making research mode a triage path (it's opt-in only, not auto-detected)
+- Research agent output persistence beyond Neurox save
+- `/skynex:research:history` command
+
+---
+
+## Risks / Notes
+
+1. **`opencode-go/deepseek-v4-flash` model ID** — verify this model ID is valid in the Pi model registry before the coder uses it in agent frontmatter. If invalid, fall back to the same model used by the main session or another cheap model. Check `pi config` or existing agents for the canonical ID format.
+
+2. **`before_agent_start` called on every message** — the injection only adds tokens when `mode === "active"`. When inactive, `buildResearchHint` returns `undefined` and zero overhead is added. This is identical to the triage pattern.
+
+3. **Toggle semantics** — `/skynex:research` is a toggle. If the user types it twice, they deactivate research mode. This is intentional (matches the request: "stays until another mode command is issued"). Future task-creation and execution modes should deactivate research mode when their command is issued; this cross-mode coordination is out of scope for now but the `sessionResearchStore` Map makes it easy to extend.
+
+4. **`verify-package-files.mjs` agent validation** — the pre-publish script checks every `.md` file under `assets/agents/` for valid frontmatter. The 3 new agent files must have `---` delimiters and include `name`, `description`, `model`, `tools` fields or the script will error on `pnpm run verify-package`. Check the exact validation rules in `scripts/verify-package-files.mjs` before finalizing frontmatter.
+
+5. **`pi install` not needed** — since `skynex-research` is a local extension in the same package (not a separate npm package), adding it to `package.json → pi.extensions` is sufficient. No `pi install` step required.
+
+6. **Test count baseline** — currently 307 tests pass. The plan adds 9 dispatcher + 6 index = 15 new tests, bringing the expected total to ≥ 322. Verify the baseline count with `pnpm test` before starting.
