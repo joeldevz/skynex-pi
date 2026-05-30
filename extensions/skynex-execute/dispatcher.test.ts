@@ -63,6 +63,38 @@ test("buildExecutionHint: tdd-proposal phase mentions HITL GATE", () => {
   assert.ok(hint.includes("HITL GATE"));
 });
 
+test("buildExecutionHint: discovery phase mentions STEP 2", () => {
+  const hint = buildExecutionHint(makeState("active", "discovery"))!;
+  assert.ok(hint.includes("STEP 2"));
+});
+
+test("buildExecutionHint: discovery phase enforces targeted scope (not full codebase)", () => {
+  const hint = buildExecutionHint(makeState("active", "discovery"))!;
+  // The fix: discovery must instruct scout to read ONLY task-referenced files
+  assert.ok(/targeted/i.test(hint), "discovery hint must mention 'targeted'");
+  assert.ok(
+    /only/i.test(hint),
+    "discovery hint must instruct reading ONLY referenced files",
+  );
+});
+
+test("buildExecutionHint: discovery phase sets a hard file limit", () => {
+  const hint = buildExecutionHint(makeState("active", "discovery"))!;
+  // Must carry an explicit file cap so the model doesn't over-explore
+  assert.ok(
+    /8 files|HARD LIMIT|limit/i.test(hint),
+    "discovery hint must set an explicit file limit",
+  );
+});
+
+test("buildExecutionHint: discovery phase forbids exploring unrelated modules", () => {
+  const hint = buildExecutionHint(makeState("active", "discovery"))!;
+  assert.ok(
+    /do NOT explore|unrelated|not.*whole codebase/i.test(hint),
+    "discovery hint must forbid broad exploration",
+  );
+});
+
 test("buildExecutionHint: generating-tests phase mentions coder and FAIL", () => {
   const hint = buildExecutionHint(makeState("active", "generating-tests"))!;
   assert.ok(hint.includes("coder"));
