@@ -51,7 +51,7 @@ function buildPhaseInstructions(phase: ExecutionPhase): string {
     case "idle":
       return "Next: STEP 1 — call mcp_Atlassian_getJiraIssue(taskKey) and show task summary to user.";
     case "discovery":
-      return "Next: STEP 2 — invoke /skill:discover with the Jira task context. Show scout envelope when done.";
+      return "Next: STEP 2 — invoke /skill:discover TARGETED. The task is already specified, so tell scout to read ONLY files directly referenced by the task (the named service + its siblings, the relevant Prisma schema, ONE example integration test). HARD LIMIT: 8 files. Do NOT explore unrelated modules/ADRs/docs. Show scout envelope when done.";
     case "test-audit":
       return "Next: STEP 3 — list existing integration tests and unit tests. Show counts to user.";
     case "tdd-proposal":

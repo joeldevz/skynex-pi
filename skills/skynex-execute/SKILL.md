@@ -35,13 +35,26 @@ Transition: phase → "discovery"
 
 ## Step 2 — DISCOVERY (phase: discovery → test-audit)
 
-Invoke: `/skill:discover`
+Invoke: `/skill:discover` — but **TARGETED**, not broad exploration.
 
-Pass to scout: Jira task context (title + description + acceptance_criteria).
+The Jira task is ALREADY specified. The scout must NOT explore the whole codebase.
+Pass this EXACT scoping instruction to scout:
+
+> "The task is fully specified below. Do a TARGETED discovery — read ONLY files
+>  directly referenced by the task. Specifically:
+>  1. The service/class named in the task (if it exists) + its directory siblings
+>  2. The Prisma schema files for the modules mentioned (e.g. availability.prisma)
+>  3. ONE existing integration test as a template (the closest match)
+>  4. The parent task context if relevant
+>  HARD LIMIT: 8 files maximum. Do NOT read unrelated modules, ADRs, or docs
+>  unless the task explicitly references them. If you find yourself reading the
+>  10th file, STOP — you have enough.
+>  Task context: <title + description + acceptance_criteria>"
 
 Show: scout envelope summary (files found, prior Neurox context).
 
 Check: If envelope.status !== "ready" → STOP, surface blocker to user.
+Check: If scout read >12 files → warn user it over-explored; proceed anyway.
 
 Transition: phase → "test-audit"
 
