@@ -48,3 +48,4 @@ src/
 # this directory is just the npm install output (~100MB+, not versioned).
 .pi/npm/
 .stryker-tmp/
+reports/
