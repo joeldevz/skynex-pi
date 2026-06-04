@@ -1,6 +1,6 @@
 {
   "name": "skynex-pi",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "Multi-agent coding harness for Pi — triage + 17 skills + 11 sub-agents + 11 extensions. Full medium/substantial-path workflow with HITL gates, TDD enforcement, adversarial review, research mode, task-creation mode, and execution mode.",
   "type": "module",
   "keywords": [
@@ -62,6 +62,7 @@
     "test": "tsx --test $(find extensions -name '*.test.ts' ! -path '*/test-harness/*' | tr '\\n' ' ')",
     "test:triage": "tsx --test extensions/triage/rules.test.ts",
     "test:integration": "tsx --test extensions/test-harness/*.integration.test.ts",
+    "mutation": "stryker run",
     "doctor": "bash scripts/doctor.sh",
     "start": "bash scripts/start.sh",
     "verify-package": "node scripts/verify-package-files.mjs",
@@ -89,6 +90,7 @@
   },
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "^0.75.3",
+    "@stryker-mutator/core": "^9.6.1",
     "@types/node": "^20.0.0",
     "tsx": "^4.19.2",
     "typebox": "^1.1.38",

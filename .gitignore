@@ -47,3 +47,4 @@ src/
 # The package names are tracked in .pi/settings.json under "packages",
 # this directory is just the npm install output (~100MB+, not versioned).
 .pi/npm/
+.stryker-tmp/

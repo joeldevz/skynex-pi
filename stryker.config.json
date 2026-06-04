@@ -1,0 +1,18 @@
+{
+  "$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+  "_comment": "Mutation testing config for skynex-pi. Uses the built-in 'command' test runner because the project runs tests via node:test + tsx (Stryker has no native node:test runner). Scoped to the examples/mutation-testing fixture for a fast, deterministic demo. Widen 'mutate' to real code (e.g. extensions/**/*.ts) once validated.",
+  "testRunner": "command",
+  "commandRunner": {
+    "command": "npx tsx --test examples/mutation-testing/is-adult.test.ts"
+  },
+  "mutate": ["examples/mutation-testing/is-adult.ts"],
+  "coverageAnalysis": "off",
+  "reporters": ["clear-text", "progress"],
+  "timeoutMS": 20000,
+  "tempDirName": ".stryker-tmp",
+  "thresholds": {
+    "high": 90,
+    "low": 70,
+    "break": null
+  }
+}
