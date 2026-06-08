@@ -53,7 +53,8 @@
       "./extensions/skynex-task",
       "./extensions/skynex-execute",
       "./extensions/skynex-mutation",
-      "./extensions/skynex-spec"
+      "./extensions/skynex-spec",
+      "./extensions/skynex-sdd"
     ],
     "skills": [
       "./skills"
