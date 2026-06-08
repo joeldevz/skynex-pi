@@ -181,6 +181,32 @@ Each skill emits a structured envelope. The next phase consumes that envelope. I
 - `security` — security review
 - `propose` — early HITL gate for substantial path. Invokes product-planner solo to produce proposal.md.
 - `specify` — produces unified SPEC.md. Invokes product-planner + architect in parallel.
+- `sync` — **OpenSpec sync**: after `/skill:validate` passes, translates accepted SPEC.md into requirement-block delta, detects collisions, checks destructiveness, and merges into `.skynex/specs/{domain}/spec.md` (canonical committed source of truth). Invokes `spec-syncer` sub-agent. Writes `sync-report.md`.
+- `archive-spec` — **OpenSpec archive**: after sync confirms, moves `.skynex/<slug>/` to `.skynex/archive/YYYY-MM-DD-<slug>/` (immutable audit trail) and updates `.skynex/archive/index.md`.
+
+## OpenSpec canonical spec layer
+
+The canonical spec store lives at `.skynex/specs/{domain}/spec.md` (committed). It evolves via deltas — each feature contributes `ADDED`, `MODIFIED`, or `REMOVED` requirement blocks after validation, never overwriting history directly.
+
+**Full lifecycle:**
+```
+discover → propose → specify → plan → build → validate
+                                                  ↓
+                                           /skill:sync
+                                                  ↓
+                                        .skynex/specs/{domain}/spec.md (canonical updated)
+                                                  ↓
+                                       /skill:archive-spec
+                                                  ↓
+                                  .skynex/archive/YYYY-MM-DD-<slug>/ (immutable)
+```
+
+**Sub-agent added:**
+- `spec-syncer` — read-only; translates feature SPEC.md (AC/Edge Cases) into `### Requirement:` + `#### Scenario:` delta format; returns `delta_markdown` envelope to the sync skill for programmatic merge.
+
+**Engine (`extensions/skynex-spec/`):**
+- `deltas.ts` — pure functions: `parseRequirementBlocks`, `parseDeltaSpec`, `applyDeltaSpec`
+- `guardrails.ts` — `detectActiveDomainCollisions`, `detectLegacyFlatSpec`, `analyzeDeltaDestructiveness`
 
 ## Response format
 

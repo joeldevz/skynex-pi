@@ -10,7 +10,8 @@
     "rootDir": ".",
     "declaration": true,
     "declarationMap": true,
-    "sourceMap": true
+    "sourceMap": true,
+    "allowImportingTsExtensions": true
   },
   "include": ["extensions/**/*.ts"],
   "exclude": ["node_modules", "dist"]
