@@ -52,7 +52,8 @@
       "./extensions/skynex-research",
       "./extensions/skynex-task",
       "./extensions/skynex-execute",
-      "./extensions/skynex-mutation"
+      "./extensions/skynex-mutation",
+      "./extensions/skynex-spec"
     ],
     "skills": [
       "./skills"
